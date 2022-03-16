@@ -1,0 +1,4362 @@
+---
+title: "MATH1307 Forecasting Project"
+author: "Hill Jigishkumar Modi (S3827516)"
+date: "21/10/2021"
+output: 
+  html_document:
+    fig_height: 6
+    fig_width: 9
+    fig_caption: yes
+    highlight: tango
+    keep_md: yes
+    theme: readable
+    toc: yes
+    toc_depth: 4
+---
+
+# **Introduction**
+
+There are Three tasks in this Report.
+
+  1. **Data**: The weekly average Disease Specific Mortality rate in Paris as dependent variable for time series regression model and city's local climate weekly measures including temperature degrees Fahrenheit), size of pollutants and levels of noxious chemical emissions from cars and industry in the air - for the period of 2010 - 2020. Total 508 time points, with mortality as dependent series and temp, chem1, chem2, particle.size as independent series. 
+  The main aim of the first task is to predict the `Disease Specific Mortality Rate in Paris` for upcoming four weeks based on the time series analysis. Time Series Regression Models with independent variables, dynlm, exponential smoothing and state-space models are used for this analysis. Then, the appropriate measures of resisual diagnostic checks and model performance measures MASE, AIC and BIC will be considered to find the best optimal model to predict the 4 weeks ahead forecast of `Mortality Rate`.
+
+
+  2. **Data**: The first day of flowering(FFD) of specific plant and contemporaneous yearly averaged climate variables including Temperature, Rainfall, Radiation Level and Relative Humidity measured from 1984– 2014 (31 years).
+  
+  The aim of the second task is to analyse whether the FFD of given plant is impacted by such climate factors and give prediction of next 4 years of FFD with optimal univariate model decided by residual checkings and MASE() score. Provide Prediction for optimal univariate Model for each methods (Finite DLM, Poly DLM, koyck DLM, ARDL DLM, Dynamic Model, Exponential Model, State-space Models).
+  
+  3_a. **Data**: The Rank-based Order similarity metric (RBO) of 81 species of plant and contemporaneous yearly averaged climate variables including Temperature, Rainfall, Radiation Level and Relative Humidity measured from 1984– 2014 (31 years). 
+  
+  Higher RBO values indicate higher similarity of the order of the first flowering occurrence (based on FFD) of the 81 species from 1983 compared to each of the subsequent years.
+  
+  The aim of the this task is to analyse whether the decreasing RBO from the base year 1984 is due to such climate factors and give prediction of next 4 years of RBO with optimal univariate model decided by residual checkings and MASE() score. Provide Prediction for univariate Model(Finite DLM, Poly DLM, koyck DLM, ARDL DLM) with lowest `MASE()` score.
+  
+  3_b.
+  
+  The aim of the this task is to analyse whether the decreasing RBO from the base year 1984 is due to such climate factors and give prediction of next 4 years of RBO with optimal univariate model decided by residual checkings and MASE() score with consideration of 1996 year as an intervention point due to drought. Provide Prediction for univariate dynamic model from dynlm package with lowest `MASE()` score.
+  
+
+
+
+##### **Importing the necessary libraries**
+```{r, message=FALSE}
+library(readr)
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(TSA)
+library(tseries)
+library(car)
+library(dynlm)
+library(Hmisc)
+library(forecast)
+library(xts)
+library(ggplot2)
+library(AER)
+library(x12)
+library(dLagM)
+library(kableExtra)
+
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+
+##### **Function Definations** 
+```{r}
+# Descriptive Analysis function
+descriptive_analysis <- function(ts, object)
+{
+  plot(ts,
+       ylab = c(paste0(toString(object))),
+       main = c(paste0("Time Series Plot of ",toString(object))),
+       type="o")
+  
+  par(mfrow=c(2,1))
+  acf(ts,
+      lag.max = 48,
+      main = c(paste0("ACF plot of ",toString(object))))
+  
+  pacf(ts,
+      lag.max = 48,
+      main = c(paste0("PACF plot of ",toString(object))))
+  par(mfrow=c(1,1))
+
+  
+  print(adf.test(ts))
+  print(pp.test(ts))
+
+}
+
+
+# Function for Decomposition
+decom <- function(ts, ts_series)
+{
+  decomposition <- stl(ts, t.window=15, s.window = "periodic", robust=TRUE)
+  plot(decomposition,
+       main = c(paste0("Weekly ", toString(ts_series)), " STL Decomposed Series"))
+}
+
+
+# Function for Summary and Residual Analysis
+summary_residual_analysis <-  function(m)
+{
+  summary(m, diagnostics = TRUE)
+  checkresiduals(m$model)
+  print(bgtest(m$model))
+  print(vif(m$model))
+  print(shapiro.test(m$model$residuals))
+}
+```
+
+# **Task-1**
+
+## **Data Preparation**
+```{r, warning=FALSE, message=FALSE}
+mort <- read.csv("mort.csv")
+```
+
+```{r}
+head(mort)
+class(mort)
+```
+After importing necessary libraries and dataset, We must convert each variable into time-series object for Time Series Analysis.
+
+```{r}
+mort <- mort[,-c(1)]
+mort_TS <- ts(mort, start = c(2010,1), frequency = 52)
+
+
+mortality_TS <- ts(mort$mortality, start = c(2010,1), frequency = 52)
+temp_TS <- ts(mort$temp, start = c(2010,1), frequency = 52)
+chem_1_TS <- ts(mort$chem1, start = c(2010,1), frequency = 52)
+chem_2_TS <- ts(mort$chem2, start = c(2010,1), frequency = 52)
+particle_size_TS <- ts(mort$particle.size, start = c(2010,1), frequency = 52)
+
+
+mort_TS %>% head()
+class(mort_TS)
+```
+
+##### **1. Mortality**
+
+```{r}
+head(mortality_TS)
+class(mortality_TS)
+```
+
+##### **2. Temperature**
+```{r}
+head(temp_TS)
+class(temp_TS)
+```
+
+##### **3. Chemical 1**
+```{r}
+head(chem_1_TS)
+class(chem_1_TS)
+```
+
+##### **4. Chemical 2**
+```{r}
+head(chem_2_TS)
+class(chem_2_TS)
+```
+
+##### **5. Partical Size**
+
+```{r}
+head(particle_size_TS)
+class(particle_size_TS)
+```
+
+## **Descriptive Analysis**
+
+##### 1. Mortality
+```{r}
+descriptive_analysis(mortality_TS, "Averaged weekly disease specific mortality")
+```
+**Time Series Characteristics**
+
+  **1. Trend** : There is slightly downward trend in the time series and decaying patterns in ACF plot confirms the assumption.  
+  
+  **2. Seasonality** : The moderate level of seasonality exists. The Wave Patterns in ACF plot confirms the finding.
+  
+  **3. Changing Variance** : There is strong indication of changing variance. 
+  
+  **4. Behaviour** : First, need to reomve seasonality to assume the behaviour.
+  
+  **5. Intervention Point** : There is no clear intervention point. 
+  
+  **6. Stationarity**: ACF plot and Time Series Plot suggests there is slighlt downward trend, however p-value < 0.05 in adf test and pp test suggest that Mortality time series is stationary series with 5% level of significance. PACF plot suggest there is significant correlation on first 2 lags.
+
+##### 2. Temperature
+```{r}
+descriptive_analysis(temp_TS, "Averaged weekly temperature")
+```
+**Time Series Characteristics**
+
+  **1. Trend** : There is no obvious trend in the time series and no decaying patterns in ACF plot confirms the assumption.  
+  
+  **2. Seasonality** : The moderate level of seasonality exists. The Wave Patterns in ACF plot confirms the finding.
+  
+  **3. Changing Variance** : There is strong indication of changing variance. 
+  
+  **4. Behaviour** : First, need to reomve seasonality to assume the behaviour.
+  
+  **5. Intervention Point** : There is no clear intervention point. 
+  
+  **6. Stationarity**: ACF plot and Time Series Plot suggests there is no trend and p-value < 0.05 in adf test and pp test suggest that Temperature time series is stationary series with 5% level of significance. PACF plot suggest there is significant correlation on first 4 lags.
+
+
+##### 3. Chemical 1
+```{r}
+descriptive_analysis(chem_1_TS, "Averaged weekly Chem1 Emissions")
+```
+**Time Series Characteristics**
+
+  **1. Trend** : There is slightly downward trend in the time series, however there is no decaying patterns in ACF plot.  
+  
+  **2. Seasonality** : The moderate level of seasonality exists. The Wave Patterns in ACF plot confirms the finding.
+  
+  **3. Changing Variance** : There is strong indication of changing variance. 
+  
+  **4. Behaviour** : First, need to reomve seasonality to assume the behaviour.
+  
+  **5. Intervention Point** : There is no clear intervention point. 
+  
+  **6. Stationarity**: ACF plot and Time Series Plot suggests there is slighlt downward trend, however p-value < 0.05 in adf test and pp test suggest that Chemical 1 time series is stationary series with 5% level of significance. PACF plot suggest there is significant correlation on first 3 lags.
+
+
+##### 4. Chemical 2
+```{r}
+descriptive_analysis(chem_2_TS, "Averaged weekly Chem2 Emissions")
+
+```
+**Time Series Characteristics**
+
+  **1. Trend** : There is no obvious trend in the time series and no decaying patterns in ACF plot confirms the assumption.  
+  
+  **2. Seasonality** : The moderate level of seasonality exists. The Wave Patterns in ACF plot confirms the finding.
+  
+  **3. Changing Variance** : There is strong indication of changing variance. 
+  
+  **4. Behaviour** : First, need to reomve seasonality to assume the behaviour.
+  
+  **5. Intervention Point** : There is no clear intervention point. 
+  
+  **6. Stationarity**: ACF plot and Time Series Plot suggests there is slighlt downward trend, however p-value < 0.05 in adf test and pp test suggest that Chemical 2 time series is stationary series with 5% level of significance. PACF plot suggest there is significant correlation on first 4 lags.
+
+
+##### 5. Partical Size
+```{r}
+descriptive_analysis(particle_size_TS, "Averaged weekly Pollutants Particle Size")
+
+```
+**Time Series Characteristics**
+
+  **1. Trend** : There is no obvious trend in the time series and no decaying patterns in ACF plot confirms the assumption.  
+  
+  **2. Seasonality** : The moderate level of seasonality exists. The Wave Patterns in ACF plot confirms the finding.
+  
+  **3. Changing Variance** : There is strong indication of changing variance. 
+  
+  **4. Behaviour** : First, need to reomve seasonality to assume the behaviour.
+  
+  **5. Intervention Point** : There is no clear intervention point. 
+  
+  **6. Stationarity**: ACF plot and Time Series Plot suggests there is slighlt downward trend, however p-value < 0.05 in adf test and pp test suggest that Partical Size time series is stationary series with 5% level of significance. PACF plot suggest there is significant correlation on first 4 lags.
+
+##### 6. Combined Scaled Time Series Plot
+```{r}
+combined <- scale(mort_TS)
+
+plot(combined, 
+     plot.type="s", 
+     col = c("#05386b","#f01b1d","#5c3c92","#d2601a","#1b6535"), 
+     main = "Scaled Time Series Plot of Mortality, Paris's Climate and pollutanats")
+
+legend("topleft", 
+       lty=1, 
+       col = c("#05386b","#f01b1d","#5c3c92","#d2601a","#1b6535"), 
+       c("Mortality", "Temperature", "Chemical 1", "Chemical 2" , "Partical Size"))
+```
+The dependent series Mortality and independent time series(Temperature, Chemical 1, Chemical 2, Partical size) are scaled to fit both the series in one plot. This way we can assume the relatoinship between the series.
+
+From the plot, we can depict that, Mortality shares strong positive relationship with Chemical 1, Chemical 2, Partical Size as for high value of RBO, their values are also high and vice-versa. They closely follow mortality time series. 
+
+However, mortality shares strong negative relationship with temperature, as for high value of RBO, value of temperature is low and vice versa.
+
+To confirm our assumption, we can look at the correlation of both independent and dependent series.
+
+**Correlation**
+```{r}
+cor(mort_TS) %>% round(3)
+```
+The above correlation matrix confirms the assumption that mortality shares positive relation with chem1, chem2, and particle size, while negative with temperature.
+
+
+## **Decomposition**
+
+X12 graph is compatible for only monthly and quarterly seasonality, while we have weekly data, so x12 graph will have compatibility issue.
+
+However, STL graph will work to get more knowledge about seasonality and trend component.
+
+##### 1. Mortality
+```{r}
+decom(mortality_TS, "Average Weekly Disease Specific Mortality")
+```
+
+From STL graph, it is depicted that, trend little follows the original pattern around the mean level as it shows downward trend till 2014 and then slighlt rose again. Few tall bars from remainder series are caused by some external factors and outliers.
+
+
+##### 2. Temperature
+```{r}
+decom(temp_TS, "Average Weekly Temperature")
+```
+
+From STL graph, it is depicted that, trend little follows the original pattern around the mean level Few tall bars from remainder series are caused by some external factors and outliers.
+
+
+##### 3. Chemical 1
+```{r}
+decom(temp_TS, "Average Weekly Chemical 1 Emissions")
+
+```
+
+From STL graph, it is depicted that, trend little follows the original pattern around the mean level. Few tall bars from remainder series are caused by some external factors and outliers.
+
+
+##### 4. Chemical 2
+```{r}
+decom(temp_TS, "Average Weekly Chemical 2 Emissions")
+
+```
+
+From STL graph, it is depicted that, trend little follows the original pattern around the mean level. Few tall bars from remainder series are caused by some external factors and outliers.
+
+
+##### 5. Partical Size
+```{r}
+decom(particle_size_TS, "Average Weekly Pollutants Particle Size")
+```
+
+From STL graph, it is depicted that, trend little follows the original pattern around the mean level as it shows downward trend till 2016 and then showed stability. Few tall bars from remainder series are caused by some external factors and outliers.
+
+
+## **Time Series Regression Methods**
+
+After data exploration, the next step is model fitting, various Time-Series Regression Models are fitted and residual diagnostics checked of respected model to find the best Time Series Regression Model.
+
+### Finite Distributed Lag Model
+
+The independent series `temp, chem1, chem2, particle.size` and its lags will help to explain the variation in the dependent series "mortality". The Lag lenth will be specified in the Finite Distributed Lag Model to create loop which will calculate varios performace measures `AIC()`, `BIC()` and `MASE()` for each lag, and the model with `lowest MASE()` will be taken for further analysis.
+
+**Temp, chem1, chem2, particle.size as independent series**
+```{r}
+for (i in 1:8)
+{
+  model_dlm <- dlm(formula = mortality ~ temp + chem1 + chem2 + particle.size, data = data.frame(mort), q = i)
+  cat("q = ", i, 
+      "AIC = ", AIC(model_dlm$model), 
+      "BIC = ", BIC(model_dlm$model), 
+      "MASE = ", MASE(model_dlm)$MASE, "\n")
+}
+```
+It is observed that the values of information criteria as well as MASE decrease as the lag q increases, so we will fit a finite DLM with a number of lags = 8.
+
+
+Above output shows that, value of performace measures `AIC(), MASE()` is decreased as lag increased. So, an attempt to fit the model with lag = 8 was taken.
+
+```{r}
+task1_model1_1 <- dlm(formula = mortality ~ temp + chem1 + chem2 + particle.size, 
+                   data = data.frame(mort), 
+                   q = 8)
+
+summary_residual_analysis(task1_model1_1)
+```
+
+Summary depicts that, only `temp.t` and `particle.size.t` lag-weights(co-efficients) are statistically significant at 5% level. While adjusted R squared is 55.02% indicating model explains only 55.02% of variation in the mortality, F-statistics of the model is statistically significant as p-value < 0.05.
+
+Histogram in the residual checks has long right tail, there is no random pattern in the residuals, significant correlation in ACF plot, P-value(< 0.05) in Shapiro-wilk test indicates that residuals are significantly deviates from the normal distribution assumption. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports serial correlation at 5% of statistical level.
+
+There are vif values which are above 10 indicating there model has issue with high multicollinearity.
+
+Overall, model is not a good fit for the given data and can not be further investigated.
+
+**Temperature and Chemical 1 as independent series**
+
+From correlation matrix, it is observed that, Chemical 1 and Chemical 2 are highly correlated`(0.851)` with other. Similarly, Chemical 1 and Particle Size are also highly correlated`(0.866)`. Hence, it is not advisable to include both of them into model fitting.
+
+
+Since Chemical 1 shares most positive relation`(0.557)`, and Temperature shares most negative relation`(-0.360)` with mortality, they will be used to find the most accurate and suitable distributed model for Mortality time series. So, for finite distributed lag models and autoregressive distributed lag model, formula would be **mortality ~ temp + chem1**.
+```{r}
+for (i in 1:8)
+{
+  model_dlm <- dlm(formula = mortality ~ temp + chem1, data = data.frame(mort), q = i)
+  cat("q = ", i, 
+      "AIC = ", AIC(model_dlm$model), 
+      "BIC = ", BIC(model_dlm$model), 
+      "MASE = ", MASE(model_dlm)$MASE, "\n")
+}
+```
+
+It is observed that the values of information criteria as well as MASE decrease as the lag q increases, so we will fit a finite DLM with a number of lags = 8.
+
+
+Above output shows that, value of performace measures `AIC(), MASE()` is decreased as lag increased. So, an attempt to fit the model with lag = 8 was taken.
+
+```{r}
+task1_model1_2 <- dlm(formula = mortality ~ temp + chem1, 
+                   data = data.frame(mort), 
+                   q = 8)
+
+summary_residual_analysis(task1_model1_2)
+```
+Summary depicts that, only `intercept, temp.t, temp.1` and `chem1.7` lag-weights(co-efficients) are statistically significant at 5% level. While adjusted R squared is 54.84% indicating model explains only 54.84% of variation in the mortality, F-statistics of the model is statistically significant as p-value < 0.05.
+
+Histogram in the residual checks has long right tail, there is no random pattern in the residuals, significant correlation in ACF plot, P-value(< 0.05) in Shapiro-wilk test indicates that residuals are significantly deviates from the normal distribution assumption. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports serial correlation at 5% of statistical level.
+
+All vif values are below 10 indicating there model has no issue with high multicollinearity.
+
+Overall, model is not a good fit for the given data and can not be further investigated.
+
+### PolyNomial Distributed Lag Model
+
+The finite DLM model had very poor residual checks. Hence, attempt to fit 2nd order polynomial model with lag = 8 was taken.
+```{r}
+task_1_model2 = polyDlm(y = as.vector(mort$mortality), 
+                 x = as.vector(mort$chem1) + as.vector(mort$temp), 
+                 q = 8, 
+                 k = 2, 
+                 show.beta = TRUE)
+
+summary_residual_analysis(task_1_model2)
+```
+Summary depicts that, `intercept, z.t0, z.t2` lag-weights(co-efficients) are statistically significant at 5% level. While adjusted R squared is 11.66% indicating model explains only 11.66% of variation in the mortality, F-statistics of the model is statistically significant as p-value < 0.05.
+
+Histogram in the residual checks has long right tail, there is no random pattern in the residuals, significant correlation in ACF plot, P-value(< 0.05) in Shapiro-wilk test indicates that residuals are significantly deviates from the normal distribution assumption. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports serial correlation at 5% of statistical level.
+
+All vif values are above 10 indicating the model has issue with high multicollinearity.
+
+Overall, model is not a good fit for the given data and can not be further investigated.
+
+### Koyck Distributed Lag Model
+
+The Koyck Distributed Lag Model was fitted on the given data.
+```{r}
+
+task_1_model3 = koyckDlm(as.vector(mort$chem1) + as.vector(mort$temp), 
+                 y = as.vector(mort$mortality))
+summary_residual_analysis(task_1_model3)
+```
+From the summary section, it is conclude that all co-efficients are statistically insignificant. Overall koyck DLM model is statistically significant with p-value < 0.05. While adjusted R squared is -2.83.
+
+The statistically significant Weak instruments test is indicating that model at the first stage of least-squares estimation is significant. While, statistically significant Wu-Hausman test indicates that there is significant correlation between the explanatory variable and the error term.
+
+Histogram in the residual checks is symmentric, there is no random pattern in the residuals and ACF has signigicant correlation. P-value(< 0.05) in Shapiro-wilk test indicates that residuals are significantly deviates from the normal distribution assumption. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports serial correlation at 5% of statistical level with p-value(<0.05).
+
+As all vif value is < 10, there is no issue of multi-collinearity.
+
+Even though Koyck Model has poor residual checks.
+
+### Autoregressive Distributed Lag Model
+
+The attempt to fit ARDL DLM was taken to find the more appropriate model than Koyck distributed lag model.
+
+The loop was used to find the ardlDLM(p,q) parameters with range of lag lengths. AIC(), BIC() and MASE() criteria was taken to find the optimal lag order p and q.
+
+```{r}
+
+for (i in 1:5)
+{
+  for(j in 1:5)
+  { 
+    model_ardlm <- ardlDlm(formula = mortality ~ temp + chem1, 
+                           data = data.frame(mort), 
+                           p = i,
+                           q = j)
+    cat("p =", i, 
+        "q =" , j,
+        "AIC =", AIC(model_ardlm$model), 
+        "BIC =", BIC(model_ardlm$model),
+        "MASE =", MASE(model_ardlm)$MASE, "\n")
+  }
+}
+
+```
+It is observed that the values of `MASE()` is lowest for q = 2 as p is increased.
+
+Ergo, on the base of MASE() value, the following parameters were taken to fit the Auto-Regressive Distributed Lag Models.
+
+ardlDLM(3,2)
+
+ardlDLM(4,2)
+
+ardlDLM(5,2),
+
+All three models were investigated.
+
+
+**ardlDLM(3,2)**
+```{r}
+
+task_1_model4_1 = ardlDlm(formula = mortality ~ temp + chem1,
+        data = data.frame(mort), 
+        p = 3,
+        q = 2)
+        
+summary_residual_analysis(task_1_model4_1)
+
+```
+
+**ardlDLM(4,2)**
+```{r}
+task_1_model4_2 = ardlDlm(formula = mortality ~ temp + chem1,
+        data = data.frame(mort), 
+        p = 4,
+        q = 2)
+        
+summary_residual_analysis(task_1_model4_2)
+```
+
+**ardlDLM(5,2)**
+```{r}
+task_1_model4_3 = ardlDlm(formula = mortality ~ temp + chem1,
+        data = data.frame(mort), 
+        p = 5,
+        q = 2)
+        
+summary_residual_analysis(task_1_model4_3)
+
+```
+
+From all the model Summaries, it is observed that every Auto-Regressive Distributed lag model was statistically significant at 5% level. Adjusted r-squared is around 71% for all model indicating model explains 71% of variation in the mortality.
+
+The 1st and 2nd Lag of dependent series `mortality` is statistically significant for every ARDL model, while `intercept, temp.t, temp.1, temp.2, chem.2` are also significant for each model. While `chem.1` is significant for `ardlDLM(3,2)`. All other co-effecients are insignificant for all ardlDLM models. 
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks is appeared to be symmentric, residuals are appeared to be random as there is trend and changing variance. ACF plot suggests there is no significant correlation exist in residuals. However, P-value(< 0.05) in Shapiro-wilk test indicates that residuals are not normally distributed. Hence, diagnostic checks are good for this model.
+
+Breusch-Godfrey test supports no serial correlation at 5% of statistical level with p-value(>0.05).
+
+All vif values are below 10, indicating model has no issue of high multicollinearity.
+
+Overall, residual diagnostics of each model is good.
+
+
+
+### Dynamic Models
+
+The attempt was taken to fit the Dynamic models to weekly Average Mortality time series.
+
+There is no clear intervention point in the series, Hence, in the dynamic models, there will be not `S.T` components.
+
+The attempt to fit the seperate model for each separate independent sereies will take place as task is to fit the **`univariate regression models`**. 
+
+**dynlm_1**
+```{r}
+task_1_model5_1 = dynlm(mortality_TS ~ L(mortality_TS , k = 1 ) + trend(mortality_TS))
+summary(task_1_model5_1)
+checkresiduals(task_1_model5_1)
+```
+**dynlm_2**
+```{r}
+task_1_model5_2 = dynlm(mortality_TS ~ L(mortality_TS , k = 1) + season(mortality_TS))
+summary(task_1_model5_2)
+checkresiduals(task_1_model5_2)
+```
+**dynlm_3**
+```{r}
+task_1_model5_3 = dynlm(mortality_TS ~ L(mortality_TS , k = 1 ) + trend(mortality_TS) + season(mortality_TS))
+summary(task_1_model5_3)
+checkresiduals(task_1_model5_3)
+```
+**dynlm_4**
+```{r}
+task_1_model5_4 = dynlm(mortality_TS ~ L(mortality_TS , k = 1 ) + L(mortality_TS , k = 2 ) + trend(mortality_TS) + season(mortality_TS))
+summary(task_1_model5_4)
+checkresiduals(task_1_model5_4)
+```
+**dynlm_5**
+```{r}
+task_1_model5_5 = dynlm(mortality_TS ~ L(mortality_TS , k = 1 ) + L(mortality_TS , k = 2 ) + temp_TS + trend(mortality_TS) + season(mortality_TS))
+summary(task_1_model5_5)
+checkresiduals(task_1_model5_5)
+```
+**dynlm_6**
+```{r}
+task_1_model5_6 = dynlm(mortality_TS ~ L(mortality_TS , k = 1 ) + L(mortality_TS , k = 2 ) + season(mortality_TS) + trend(mortality_TS) + temp_TS + L(temp_TS , k = 1 ))
+summary(task_1_model5_6)
+checkresiduals(task_1_model5_6)
+```
+**dynlm_7**
+```{r}
+task_1_model5_7 = dynlm(mortality_TS ~ L(mortality_TS , k = 1 ) + L(mortality_TS , k = 2 ) +  L(mortality_TS , k = 3 ) + trend(mortality_TS) + chem_1_TS + temp_TS + L(chem_1_TS, k=1))
+summary(task_1_model5_7)
+checkresiduals(task_1_model5_7)
+```
+
+From all the model Summaries, it is observed that all dynamic models are statistically significant at 5% level. Adjusted r-squared is between (53-73)% in each model indicating models explains (53-73)% of variation in the Mortality. 
+
+`dynlm_1` records the `lowest adjusted R2 (53.8%)`, while `dynlm_6` records the `highest R2(72.98%)`. All coefficients of `dynlm_1` are statistically significant.
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks is appeared to be symmentric, but residuals are not completly random and range of residuals is between(-30, 30). There is still correlation left in the residuals of all dynamic model. Hence, diagnostic checks are poor for these models.
+
+**Model Comparison**
+
+```{r}
+attr(task_1_model3$model,"class") = "lm"
+T1_models <- c("Finite DLM (all predictors)", "Finite DLM (chem1 + temp)", "Poly DLM", "Koyck", "ARDL_3_2", "ARDL_4_2", "ARDL_5_2", "dynlm_1", "dynlm_2", "dynlm_3", "dynlm_4", "dynlm_5" ,"dynlm_6", "dynlm_7")
+
+T1_aic <- AIC(task1_model1_1$model, task1_model1_2$model, task_1_model2$model, task_1_model3$model, task_1_model4_1$model, task_1_model4_2$model, task_1_model4_3$model, task_1_model5_1,task_1_model5_2,task_1_model5_3, task_1_model5_4, task_1_model5_5, task_1_model5_6, task_1_model5_7)$AIC
+
+T1_bic <- BIC(task1_model1_1$model, task1_model1_2$model, task_1_model2$model, task_1_model3$model, task_1_model4_1$model, task_1_model4_2$model, task_1_model4_3$model, task_1_model5_1,task_1_model5_2,task_1_model5_3, task_1_model5_4, task_1_model5_5, task_1_model5_6, task_1_model5_7)$BIC
+
+T1_mase <- MASE(task1_model1_1$model, task1_model1_2$model, task_1_model2$model, task_1_model3$model, task_1_model4_1, task_1_model4_2, task_1_model4_3, lm(task_1_model5_1), lm(task_1_model5_2), lm(task_1_model5_3), lm(task_1_model5_4), lm(task_1_model5_5), lm(task_1_model5_6), lm(task_1_model5_7))$MASE
+
+T1_Model_Comparison <- data.frame(T1_models, T1_mase, T1_aic, T1_bic)
+colnames(T1_Model_Comparison) <- c("Model","MASE","AIC", "BIC")
+
+kbl(T1_Model_Comparison) %>% kable_paper()
+```
+
+
+## **Exponential smoothing methods**
+
+Exponential Smoothing and ETS methods are not compatible in weekly time series. Hence, an attemp to convert this weekly time series into monthly time series was taken. `zoo` function was used for this purpose.
+
+```{r}
+yearly_mortality_TS = aggregate(zoo(mortality_TS),as.yearmon,sum)
+yearly_mortality_TS
+```
+The original data was comprised of 40 weeks in 2019, which approximates till september month, hence Oct 2019 data was removed in following chunk.
+```{r}
+yearly_mortality_TS[yearly_mortality_TS == 171.34] <- NA
+yearly_mortality_TS = na.omit(yearly_mortality_TS)
+yearly_mortality_TS
+```
+
+As none of the Distributed Lag Model was sufficient to capture the auto-correlation, the attempt to fit the exponential smoothing models was taken. As there is strong seasonal pattern in Mortality series, `seasonality = {additive, multiplicative}` will be considered with the combination of `exponential = {TRUE, FALSE}` and `damped = {TRUE, FALSE}`.
+
+Hence, all the six possible exponential smoothing models will fitted and checked in loop. 
+```{r}
+T1_HW_models = c("Holt_Winter additive method",
+              "Holt_Winter multiplicative method with exponential trend",
+              "Holt_Winter multiplicative method",
+              "Holt_Winter additive method",
+              "Holt_Winter multiplicative method with exponential trend",
+              "Holt_Winter multiplicative method")
+
+T1_exponential = c(TRUE,FALSE)
+T1_seasonality = c("additive","multiplicative")
+T1_damped = c(TRUE,FALSE)
+T1_exponential_models <- expand.grid(T1_exponential, T1_seasonality, T1_damped)
+T1_exponential_models <- T1_exponential_models[-c(1,5),]
+
+T1_HW_AIC <- array(NA, 6)
+T1_HW_BIC <- array(NA, 6)
+T1_HW_MASE <- array(NA, 6)
+T1_levels <- array(NA, dim=c(6,3))
+
+
+for (i in 1:6)
+{
+  T1_HW_model <- hw(yearly_mortality_TS,
+                 exponential = T1_exponential_models[i,1],
+                 seasonal = toString(T1_exponential_models[i,2],
+                                     damped = T1_exponential_models[i,3]))
+  T1_HW_AIC[i] <- T1_HW_model$model$aic
+  T1_HW_BIC[i] <- T1_HW_model$model$bic
+  T1_HW_MASE[i] <- accuracy(T1_HW_model)[6]
+  T1_levels[i,1] <- T1_exponential_models[i,1]
+  T1_levels[i,2] <- toString(T1_exponential_models[i,2])
+  T1_levels[i,3] <- T1_exponential_models[i,3]
+  summary(T1_HW_model)
+  checkresiduals(T1_HW_model)
+  print(shapiro.test(T1_HW_model$model$residuals))
+}
+
+T1_results_HW = data.frame(T1_HW_models, T1_levels, T1_HW_MASE, T1_HW_AIC, T1_HW_BIC)
+colnames(T1_results_HW) = c("Model", "Exponential","Seasonality","Damped","MASE","AIC", "BIC")
+
+kbl(T1_results_HW) %>% kable_paper()
+```
+**Holt-Winters’ additive method_Damped**
+
+Residuals from Holt-Winters’ additive method (Plot 1) are not following complete random pattern as ACF plot has little wave-like pattern and has symmentric histogram, but range of standardise residuals is between (-10 to 10), ACF plot depicts that there is significant correlation left in the residuals at lag 1. P-value(< 0.05) in Shapiro-wilk test indicates that residuals are significantly deviates from the normal distribution assumption.
+
+**Holt-Winters’ multiplicative method with exponential trend_Damped**
+
+Residuals from Holt-Winters’ multiplicative method with exponential trend (Plot 2) are not random as it shows strong upward pattern after year of 2014. Slowly decaying patterns in ACF plot confirms this assumption. Residuals has symmentirc histogram and most of standadised residuals are between (-0.1 to 0.15). P-value(< 0.05) in Shapiro-wilk test indicates that residuals are significantly deviates from the normal distribution assumption.
+
+**Holt-Winters’ multiplicative method_Damped**
+
+Residuals from Holt-Winters’ multiplicative method (Plot 3) are not following complete random pattern as it has changing variance, has little auto-regressive behaviour. The histogram of residual is symmetric with long right tail. most of standadised residuals are between (-0.1 to 0.15)., ACF plot depicts that there is significant correlation left in the residuals at lag 1. P-value(< 0.05) in Shapiro-wilk test indicates that residuals are significantly deviates from the normal distribution assumption.
+
+**Holt-Winters’ additive method**
+
+Residuals from Holt-Winters’ additive method (Plot 4) closely follows model (Plot 1).
+
+**Holt-Winters’ multiplicative method with exponential trend**
+
+Residuals from Holt-Winters’ multiplicative method with exponential trend (Plot 5) closely follows model (Plot 2).
+
+**Holt-Winters’ multiplicative method**
+
+Residuals from Holt-Winters’ multiplicative method (Plot 6) closely follows model (Plot 3).
+
+
+In a nutshell, from above plots, it is observed that dumping the trend does not make noticable difference to the model without damped trend, summary and residuals diagnostics are quite similar.
+
+The **`Holt_Winter additive method`** method has lowest `MASE()` value.
+
+**Formating T1_results_HW table **
+```{r}
+
+T1_results_HW$Damped <- factor(T1_results_HW$Damped,
+                             levels = c(TRUE, FALSE),
+                             labels = c("damped"," "))
+
+T1_results_HW <- unite(T1_results_HW,
+                     "Model", c("Model","Damped"), sep = "_")
+
+T1_results_HW <- T1_results_HW[,-c(2,3)]
+kbl(T1_results_HW) %>% kable_paper()
+```
+
+
+## **State-space Models**
+
+The additive and multiplicative errors can be added to exponential smoothing method. This models are called as state-space model. The attempt was taken to fit the state-space models.
+
+The 4 state-space models, `ets_models = {AAA, MAA, MAM, MMM}` were fitted with the combination of `damped = {TRUE, FALSE}`. Some variations of State-Space models were forbidden.
+
+```{r}
+T1_ets_models = c("AAA", "MAA", "MAM", "MMM")
+T1_damped = c(TRUE,FALSE)
+T1_ETS_models <- expand.grid(T1_ets_models, T1_damped)
+
+T1_ETS_AIC <- array(NA, 8)
+T1_ETS_BIC <- array(NA, 8)
+T1_ETS_MASE <- array(NA, 8)
+T1_levels <- array(NA, dim=c(8,2))
+
+for (i in 1:8)
+{
+  T1_ETS <- ets(yearly_mortality_TS,
+             model = toString(T1_ETS_models[i, 1]), damped = T1_ETS_models[i,2])
+  T1_ETS_AIC[i] <- T1_ETS$aic
+  T1_ETS_BIC[i] <- T1_ETS$bic
+  T1_ETS_MASE[i] <- accuracy(T1_ETS)[6]
+  T1_levels[i,1] <- toString(T1_ETS_models[i,1])
+  T1_levels[i,2] <- T1_ETS_models[i,2]
+  summary(T1_ETS)
+  checkresiduals(T1_ETS)
+  print(shapiro.test(T1_ETS$residuals))
+}
+
+
+T1_results_ETS = data.frame(T1_levels, T1_ETS_MASE, T1_ETS_AIC, T1_ETS_BIC)
+colnames(T1_results_ETS) = c("Model","Damped","MASE","AIC", "BIC")
+
+kbl(T1_results_ETS) %>% kable_paper()
+```
+
+**AAA_damped**
+
+Residuals(Plot 1) are not following complete random pattern as ACF plot has little wave-like pattern and has symmentric histogram, but range of standardise residuals is between (-50 to 100), ACF plot depicts that there is significant correlation left in the residuals at lag 1. P-value(< 0.05) in Shapiro-wilk test indicates that residuals are significantly deviates from the normal distribution assumption.
+
+
+**MAA_damped**
+
+Residuals(Plot 2) are not following complete random pattern as ACF plot has little wave-like pattern and has symmentric histogram, but range of standardise residuals is between (-0.1 to 0.1), ACF plot depicts that there is significant correlation left in the residuals at lag 1. P-value(< 0.05) in Shapiro-wilk test indicates that residuals are significantly deviates from the normal distribution assumption. However, so far, this model came out as best model.
+
+**MAM_damped**
+
+The model(Plot 3) closely follows previous model(Plot 2).
+
+
+**MMM_damped**
+
+The model(Plot 4) closely follows previous model(Plot 2).
+
+**AAA**
+
+The model(Plot 5) closely follows AAA_damped model(Plot 1)
+
+**MAA**
+
+The model(Plot 6) closely follows AAA_damped model(Plot 2)
+
+
+**MAM**
+
+The model(Plot 7) closely follows MAM_damped model(Plot 3) 
+
+**MMM**
+
+The model(Plot 8) has strong auto-correlation at lag 1 in ACF plot, standardise residuals in the range of (-0.1 to 0.15). The residuals are not completely random. P-value(< 0.05) in Shapiro-wilk test indicates that residuals are significantly deviates from the normal distribution assumption. However, so far, this model came out as best model.
+
+
+Overall, the state-space model with lowest MASE() value is ETS(A,Ad,A), which is consist of Additive Errors, Additive Damped Trend and Additive Seasonality.
+
+The `**MAM_damped**` method has lowest MASE() value, which is so far the best suitable model.
+
+**Formating T1_results_ETS table **
+```{r}
+T1_results_ETS$Damped <- factor(T1_results_ETS$Damped,
+                             levels = c(TRUE, FALSE),
+                             labels = c("damped"," "))
+
+T1_results_ETS <- unite(T1_results_ETS,
+                     "Model", c("Model","Damped"), sep = "_")
+
+kbl(T1_results_ETS) %>% kable_paper()
+```
+
+## **Model Comparison**
+
+**Merge Model Comparison Table**
+
+The Merge Model Comparison Table is arranged with the `ascending order of MASE()`.
+```{r}
+T1_Model_Comparison <- rbind(T1_Model_Comparison, T1_results_ETS, T1_results_HW)
+
+T1_sorted_MASE <- T1_Model_Comparison %>% arrange(MASE)
+kbl(T1_sorted_MASE) %>%
+  kable_paper()
+```
+
+## **Forecasting**
+
+From above graph, the **`MAM_damped`** came out as best suitable model to predict the `disease specific Mortality in Paris`. However, as data was manipulated and converted into monthly data from weekly data to fit the `exponential smoothing` and `Stae-Space (ETS)` models, MAM_damped will give monthly forecasting. 
+
+While, to predict the 4 weeks ahead averaged mortality, **`dynlm_6`** model was used, which has the second lowest `MASE()` score. 
+
+**`dynlm_6`** model consist of `1st and 2nd lag of mortality time series, season and trend component of mortality time series, temperature time series and 1st lag of temperature time series`.
+
+**`dynlm_6`** = dynlm(mortality_TS ~ L(mortality_TS , k = 1 ) + L(mortality_TS , k = 2 ) + season(mortality_TS) + trend(mortality_TS) + temp_TS + L(temp_TS , k = 1 ))
+
+### Monthly Forcasting from ETS model
+
+**Comparison of Charts**
+```{r}
+prediction <- ets(yearly_mortality_TS,
+                    model="MAM",
+                    damped = T)
+prediction <- forecast(prediction)
+
+prediction1 <- ets(yearly_mortality_TS,
+                    model="MAA",
+                    damped = TRUE)
+prediction1 <- forecast(prediction1)
+
+plot(prediction,
+     main = "Next Two years prediction of mortality using ETS",
+     ylab = "Mortality Rate",
+     fcol = "#f01b1d")
+
+lines(fitted(prediction1), col = "#05386b")
+       
+lines(fitted(prediction), col = "#f01b1d")
+
+
+legend("topleft", 
+       lty = 1, 
+       col = c("black", "#f01b1d", "#05386b"), 
+       c("Data", "MAM_damped", "MAA_damped"))
+```
+
+Fitted lines of MAM_damped, MAA_damped models does not closely follow the generated monthly mortality Values, they deviates little from the generated monthly mortality Values around the year of 2013 and 2016. 
+
+While fitted lines of both models closely follow each others. Even prediction of both models are same. Hence, `ETS(M, Ad,M)` is choosen simply because it has low MASE(), AIC() and BIC() compare to `ETS(M,Ad,A)`.
+
+To conclude, **ETS(M,Ad,M)** is the best suitable model in terms of MASE() value and Residual Diagnostic checks to predict the **Disease Specific monthly Mortality rate in Paris**.
+
+
+**Prediction Chart**
+```{r}
+
+plot(prediction1, fcol = "#b20238", 
+     main = "Forecasting of Mortality in 2019 and 2020",
+     ylab = "Radiation")
+lines(fitted(prediction1), col = "#f01b1d")
+
+legend("topleft", 
+       lty = 1, 
+       col = c("black", "#f01b1d"), 
+       c("Data", "Prediction"))
+```
+
+
+**Prediction Points**
+
+Hence, the plot of forecast value of averaged monthly mortality rate in Paris predicted by State-space model `MAM_damped` is shown below.
+```{r}
+kbl(prediction) %>% kable_paper()
+```
+The prediction of Disease Specific Mortality Rate will be between (600 - 900), with ups and down.
+
+### weekly Forcasting from dylnm model
+
+**Prediction Chart**
+```{r, results="hide"}
+
+q = 4
+n = nrow(task_1_model5_6$model)
+m.frc = array(NA , (n + q))
+m.frc[1:n] = mortality_TS[3:length(mortality_TS)]
+trend = array(NA,q)
+trend.start = task_1_model5_6$model[n,"trend(mortality_TS)"]
+trend = seq(trend.start , trend.start + q/12, 1/12)
+
+for(i in 1:q){
+  weeks = array(0,51)
+  weeks[(i-12)%%52] = 1
+  print(weeks)
+
+  data.new =c(1,m.frc[n-1+i],m.frc[n-2+i],weeks,trend[i],1,1)
+  m.frc[n+i] = as.vector(task_1_model5_6$coefficients) %*% data.new
+}
+```
+
+```{R}
+plot(mortality_TS,
+     ylab='Mortality Rate',
+     xlab='Year',
+     main = "Next 4 weeks (41 - 44) prediction of disease specific Mortality Rate in Paris")
+
+lines(ts(m.frc[(n+1):(n+q)],
+         start=c(2019,41), frequency = 52),
+      col = "#f01b1d")
+
+legend("topleft", 
+       lty = 1, 
+       col = c("black", "#f01b1d"), 
+       c("Data", "Prediction"))
+
+```
+Above graph, gives the weekly prediction of diseas specific Mortality Rate, in which it shows that mortality rate will be increased in upcoming 4 weeks.
+
+**Prediction Points**
+```{r}
+t1_Time_point <- c("41, 2019", "42, 2019", "43, 2019", "44, 2019")
+t1_points <- m.frc[(n+1):(n+q)]
+
+t1_prediction_points <- data.frame(t1_Time_point, t1_points)
+colnames(t1_prediction_points) = c("Time","Point Forecast")
+
+
+kable(t1_prediction_points) %>% kable_paper()
+```
+Above, table shows that mortality rate in Paris will be `172.80` in the 44th week of 2019.
+
+# **Task - 2**
+
+## **Data Preparation**
+```{r, warning=FALSE, message=FALSE}
+FFD_df <- read_csv("FFD.csv")
+FFD_prediction <- read_csv("Covariate x-values for Task 2.csv")
+
+FFD_prediction = na.omit(FFD_prediction)
+```
+
+```{r}
+head(FFD_df)
+class(FFD_df)
+```
+
+After importing necessary libraries and dataset, We must convert each variable into time-series object for Time Series Analysis.
+
+```{r}
+FFD_df <- FFD_df[,-c(1)]
+FFD_df_TS <- ts(FFD_df, start = 1984)
+
+
+temp_2_TS <- ts(FFD_df$Temperature, start = 1984)
+rain_TS <- ts(FFD_df$Rainfall, start = 1984)
+radiation_TS <- ts(FFD_df$Radiation, start = 1984)
+humidity_TS <- ts(FFD_df$RelHumidity, start = 1984)
+FFD_TS <- ts(FFD_df$FFD, start = 1984)
+
+
+temp_next <- ts(FFD_prediction$Temperature,start =2015)
+rain_next <- ts(FFD_prediction$Rainfall,start =2015)
+rad_next <- ts(FFD_prediction$Radiation,start =2015)
+hum_next <- ts(FFD_prediction$RelHumidity,start =2015)
+
+
+FFD_df_TS %>% head()
+class(FFD_df_TS)
+```
+
+##### **1. Temperature**
+```{r}
+temp_2_TS %>% head()
+class(temp_2_TS)
+```
+
+##### **2. Rainfall**
+```{r}
+rain_TS %>% head()
+class(rain_TS)
+```
+
+##### **3. Radiation Level**
+
+```{r}
+radiation_TS %>% head()
+class(radiation_TS)
+```
+##### **4. Relative Humidity**
+
+```{r}
+humidity_TS %>% head()
+class(humidity_TS)
+```
+##### **5. Fist Day of Flowering**
+
+```{r}
+FFD_TS %>% head()
+class(FFD_TS)
+```
+
+## **Descriptive Analysis**
+
+##### 1. First Day of Flowering
+```{r}
+descriptive_analysis(FFD_TS, "day of first flowering")
+```
+**Time Series Characteristics**
+
+  **1. Trend** : There is slightly downward trend in the time series, however thers is no decaying patterns in ACF plot.  
+  
+  **2. Seasonality** : Seasonality does not exists in the time series plot.
+  
+  **3. Changing Variance** : There is strong indication of changing variance, the variance between the year of 2002-2004 is too high compare to other years. 
+  
+  **4. Behaviour** : The behaviour is combination of Auto-regressive and moving average. For example, between the year(2008-2010), series is Auto Regressive, while between the years(2010-2012), series is Moving Average.
+  
+  **5. Intervention Point** : There is no clear intervention point. 
+  
+  **6. Stationarity**: ACF plot and Time Series Plot suggests there is no trend. Even though p-value in adf test is > 0.05, p-value < 0.05 in pp test suggest that FFD time series is stationary series with 5% level of significance. PACF plot suggest there no is significant correlation exist.
+
+
+##### 2. Temperature
+```{r}
+descriptive_analysis(temp_2_TS, "Averaged yearly temperature")
+```
+**Time Series Characteristics**
+
+  **1. Trend** : There is slightly upward trend in the time series, however thers is no decaying patterns in ACF plot.  
+  
+  **2. Seasonality** : Seasonality does not exists in the time series plot.
+  
+  **3. Changing Variance** : There is strong indication of changing variance.
+  
+  **4. Behaviour** : The behaviour is combination of Auto-regressive and moving average. For example, between the year(2000-2004), series is Auto Regressive, while between the years(2004-2012), series is Moving Average.
+  
+  **5. Intervention Point** : There is clear intervention point around yeat 1996. 
+  
+  **6. Stationarity**: ACF plot and Time Series Plot suggests there is no trend. Even though p-value in adf test is > 0.05, p-value < 0.05 in pp test suggest that Temperature time series is stationary series with 5% level of significance. PACF plot suggest there is significant correlation at lag 1.
+
+
+##### 3. Rainfall
+```{r}
+descriptive_analysis(rain_TS, "Averaged  yearly rainfall")
+```
+**Time Series Characteristics**
+
+  **1. Trend** : There is no obvious trend in the time series and no decaying patterns in ACF plot.  
+  
+  **2. Seasonality** : Seasonality does not exists in the time series plot.
+  
+  **3. Changing Variance** : There is strong indication of changing variance.
+  
+  **4. Behaviour** : The behaviour is combination of Auto-regressive and moving average. For example, between the year(1984-1987), series is Auto Regressive, while between the years(1993-2015), series is Moving Average.
+  
+  **5. Intervention Point** : There is clear intervention point around yeat 1996. 
+  
+  **6. Stationarity**: ACF plot and Time Series Plot suggests there is no trend. Even though p-value in adf test is > 0.05, p-value < 0.05 in pp test suggest that Rainfall time series is stationary series with 5% level of significance. PACF plot suggest there no is significant correlation exist.
+
+
+
+##### 4. Radiation Level
+```{r}
+descriptive_analysis(radiation_TS, "Averaged yearly radiation level")
+```
+**Time Series Characteristics**
+
+  **1. Trend** : There is downward trend till the year 1992, then sereis rose again and reached peak level in 2006 year, then series shows downward trend again. However thers is no decaying patterns in ACF plot.  
+  
+  **2. Seasonality** : Seasonality does not exists in the time series plot.
+  
+  **3. Changing Variance** : There is strong indication of changing variance.
+  
+  **4. Behaviour** : The behaviour is combination of Auto-regressive and moving average. For example, between the year(1984-1990), series is Auto Regressive, while between the years(1990-1998), series is Moving Average.
+  
+  **5. Intervention Point** : There is no clear intervention point. 
+  
+  **6. Stationarity**: ACF plot and Time Series Plot suggests there is no trend. however, p-value >0.05  in adf test and pp test suggest that Radiation Level time series is non-stationary series with 5% level of significance. PACF plot suggest there is significant correlation exist at lag 1.
+
+
+##### 5. Relative Humidity
+```{r}
+descriptive_analysis(humidity_TS, "Averaged yearly relative humidity")
+```
+**Time Series Characteristics**
+
+  **1. Trend** : There is no obvious trend in the time series, and no decaying patterns in ACF plot confirm finding.  
+  
+  **2. Seasonality** : Seasonality does not exists in the time series plot.
+  
+  **3. Changing Variance** : There is strong indication of changing variance.
+  
+  **4. Behaviour** : The behaviour is moving average.
+  
+  **5. Intervention Point** : There is no clear intervention point. 
+  
+  **6. Stationarity**: ACF plot and Time Series Plot suggests there is no trend. Even though p-value in adf test is > 0.05, p-value < 0.05 in pp test suggest that Relative Humidity time series is stationary series with 5% level of significance. PACF plot suggest there no is significant correlation exist.
+
+
+
+##### 6. Combine Scaled Time Series Plot
+```{r}
+combined <- scale(FFD_df_TS)
+
+plot(combined, 
+     plot.type="s", 
+     col = c("#05386b","#f01b1d","#5c3c92","#d2601a","#1b6535"), 
+     main = "Scaled Time Series Plot of plant's day of first flowering and 
+     contemporaneous averaged yearly climate variables")
+
+legend("topleft", 
+       lty=1, 
+       col = c("#05386b","#f01b1d","#5c3c92","#d2601a","#1b6535"), 
+       c("Temperature", "Rainfall", "Radiation Level", "Relative Humidity" , "FFD"))
+```
+The dependent series RBO and independent time series(Temperature, Rainfall, Radiation Level, Relative Humidity) are scaled to fit both the series in one plot. This way we can assume the relatoinship between the series.
+
+From the plot, we can depict that, FFD shares negative relationship with Temperature and Rainfall as for high value of FFD, their values are low and vice-versa. 
+
+However, FFD shares too little positive relationship with Relative Humidity, as for high value of FFD, value of relative humidity is also little high and vice versa.
+
+To confirm our assumption, we can look at the correlation of both independent and dependent series.
+
+
+**Correlation**
+
+```{r}
+cor(FFD_df_TS) %>% round(3)
+```
+The above correlation matrix confirms the assumption that FFD shares negative relation with temperature, rainfall while too litle positive with Radiatoin Level and relative humidity.
+
+
+## **Time Series Regression Methods**
+
+After data exploration, the next step is model fitting, various Time-Series Regression Models are fitted and residual diagnostics checked of respected model to find the best Time Series Regression Model.
+
+### Finite Distributed Lag Model
+
+The independent series `Temperature, Rainfall, Radiaton Level, Relative Humidity` and its lags will help to explain the variation in the dependent series `FFD`. The Lag lenth will be specified in the Finite Distributed Lag Model to create loop which will calculate varios performace measures `AIC()`, `BIC()` and `MASE()` for each lag, and the model with lowest MASE() will be taken for further analysis. 
+
+The attempt to fit the seperate model for each separate independent sereies will take place as task is to fit the **`univariate regression models`**. 
+
+##### 1.Temperature
+
+```{r}
+for (i in 1:8)
+{
+  model_dlm <- dlm(formula = FFD ~ Temperature, data = data.frame(FFD_df), q = i)
+  cat("q = ", i, 
+      "AIC = ", AIC(model_dlm$model), 
+      "BIC = ", BIC(model_dlm$model), 
+      "MASE = ", MASE(model_dlm)$MASE, "\n")
+}
+```
+It is observed that the values of information criteria as well as MASE decrease as the lag q increases, so we will fit a finite DLM with a number of lags = 8.
+
+Above output shows that, value of performace measures `AIC(), MASE()` is decreased as lag increased. So, an attempt to fit the model with lag = 8 was taken.
+```{r}
+task2_temp1 <- dlm(formula = FFD ~ Temperature, 
+                      data = data.frame(FFD_df),
+                      q = 8)
+
+summary_residual_analysis(task2_temp1)
+```
+Summary depicts that, only `intercept` lag-weights(co-efficients) is statistically significant at 5% level. While adjusted R squared is 11.34% indicating model explains only 11.34% of variation in the FFD, F-statistics of the model is statistically insignificant as p-value > 0.05.
+
+Histogram in the residual checks has long right tail, there is no random pattern in the residuals in the range of (-25, 50). However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is no serial correlation at 5% of statistical level.
+
+All vif values are below 10 indicating there model has no issue with high multicollinearity.
+
+Overall, model is not a good fit for the given data and can not be further investigated.
+
+**Temperature without Intercept**
+```{r, error=FALSE}
+task2_temp1_a <- dlm(formula = FFD ~ Temperature -1, 
+                      data = data.frame(FFD_df),
+                      q = 8)
+
+summary_residual_analysis(task2_temp1_a)
+```
+Summary depicts that, not a single lag-weights(co-efficients) is statistically significant at 5% level. While adjusted R squared is 98.84% indicating model explains only 98.84% of variation in the FFD, F-statistics of the model is statistically significant as p-value < 0.05.
+
+Histogram in the residual checks has long right tail, there is no random pattern in the residuals in the range of (-30, 60). Siginificant first lag in ACF plot. However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is serial correlation at 5% of statistical level.
+
+All vif values are below 10 indicating there model has no issue with high multicollinearity.
+
+Overall, model is not a good fit for the given data and can not be further investigated.
+
+##### 2.Rainfall
+```{r}
+for (i in 1:8)
+{
+  model_dlm <- dlm(formula = FFD ~ Rainfall, data = data.frame(FFD_df), q = i)
+  cat("q = ", i, 
+      "AIC = ", AIC(model_dlm$model), 
+      "BIC = ", BIC(model_dlm$model), 
+      "MASE = ", MASE(model_dlm)$MASE, "\n")
+}
+```
+It is observed that the values of information criteria as well as MASE decrease as the lag q increases, so we will fit a finite DLM with a number of lags = 8.
+
+Above output shows that, value of performace measures `AIC(), MASE()` is decreased as lag increased. So, an attempt to fit the model with lag = 8 was taken.
+```{r, error=FALSE}
+task2_rain1 <- dlm(formula = FFD ~ Rainfall, 
+                      data = data.frame(FFD_df),
+                      q = 8)
+
+summary_residual_analysis(task2_rain1)
+```
+Summary depicts that, only `intercept, rainfall.5, rainfall.7, rainfall.8` lag-weights(co-efficients) is statistically significant at 5% level. While adjusted R squared is 28.78% indicating model explains only 28.78% of variation in the FFD, F-statistics of the model is statistically insignificant as p-value > 0.05.
+
+Histogram in the residual checks has long right tail, there is no random pattern in the residuals in the range of (-25, 50). However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is serial correlation at 5% of statistical level.
+
+All vif values are below 10 indicating there model has no issue with high multicollinearity.
+
+Overall, model is not a good fit for the given data and can not be further investigated.
+
+
+**Rainfall without Intercept**
+```{r, error=FALSE}
+task2_rain1_a <- dlm(formula = FFD ~ Rainfall -1, 
+                      data = data.frame(FFD_df),
+                      q = 8)
+
+summary_residual_analysis(task2_rain1_a)
+```
+Summary depicts that, only `rainfall.7, rainfall.8` lag-weights(co-efficients) is statistically significant at 5% level. While adjusted R squared is 98.94% indicating model explains only 98.94% of variation in the FFD, F-statistics of the model is statistically significant as p-value < 0.05.
+
+Histogram in the residual checks has long right tail, there is no random pattern in the residuals in the range of (-40, 60). Siginificant first lag in ACF plot. P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed. However, Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is serial correlation at 5% of statistical level.
+
+All vif values are above 10 indicating there model has issue with high multicollinearity.
+
+Overall, model is not a good fit for the given data and can not be further investigated.
+
+
+
+##### 3.Radiation Level
+```{r}
+for (i in 1:8)
+{
+  model_dlm <- dlm(formula = FFD ~ Radiation, data = data.frame(FFD_df), q = i)
+  cat("q = ", i, 
+      "AIC = ", AIC(model_dlm$model), 
+      "BIC = ", BIC(model_dlm$model), 
+      "MASE = ", MASE(model_dlm)$MASE, "\n")
+}
+```
+It is observed that the values of information criteria as well as MASE decrease as the lag q increases, so we will fit a finite DLM with a number of lags = 8.
+
+Above output shows that, value of performace measures `AIC(), MASE()` is decreased as lag increased. So, an attempt to fit the model with lag = 8 was taken.
+```{r, error=FALSE}
+task2_rad1 <- dlm(formula = FFD ~ Radiation, 
+                      data = data.frame(FFD_df),
+                      q = 8)
+
+summary_residual_analysis(task2_rad1)
+```
+Summary depicts that, only `intercept, radiatoin.7` lag-weights(co-efficients) is statistically significant at 5% level. While adjusted R squared is 04.93% indicating model explains only 04.93% of variation in the FFD, F-statistics of the model is statistically insignificant as p-value > 0.05.
+
+Histogram in the residual checks has long right tail, there is no random pattern in the residuals in the range of (-30, 60). However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is serial correlation at 5% of statistical level.
+
+All vif values are below 10 indicating there model has no issue with high multicollinearity.
+
+Overall, model is not a good fit for the given data and can not be further investigated.
+
+**Radiation Level without Intercept**
+```{r, error=FALSE}
+task2_rad1_a <- dlm(formula = FFD ~ Radiation -1, 
+                      data = data.frame(FFD_df),
+                      q = 8)
+
+summary_residual_analysis(task2_rad1_a)
+```
+Summary depicts that, not a single lag-weights(co-efficients) is statistically significant at 5% level. While adjusted R squared is 98.87% indicating model explains only 98.87% of variation in the FFD, F-statistics of the model is statistically significant as p-value < 0.05.
+
+Histogram in the residual checks has long right tail, there is no random pattern in the residuals in the range of (-40, 60). Siginificant first lag in ACF plot. However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is serial correlation at 5% of statistical level.
+
+All vif values are below 10 indicating there model has no issue with high multicollinearity.
+
+Overall, model is not a good fit for the given data and can not be further investigated.
+
+
+##### 4.Relative Humidity
+```{r}
+for (i in 1:8)
+{
+  model_dlm <- dlm(formula = FFD ~ RelHumidity, data = data.frame(FFD_df), q = i)
+  cat("q = ", i, 
+      "AIC = ", AIC(model_dlm$model), 
+      "BIC = ", BIC(model_dlm$model), 
+      "MASE = ", MASE(model_dlm)$MASE, "\n")
+}
+```
+It is observed that the values of information criteria as well as MASE decrease as the lag q increases, so we will fit a finite DLM with a number of lags = 8.
+
+Above output shows that, value of performace measures `AIC(), MASE()` is decreased as lag increased. So, an attempt to fit the model with lag = 8 was taken.
+```{r, error=FALSE}
+task2_hum1 <- dlm(formula = FFD ~ RelHumidity, 
+                      data = data.frame(FFD_df),
+                      q = 8)
+
+summary_residual_analysis(task2_hum1)
+```
+Summary depicts that, only `intercept, radiatoin.7` lag-weights(co-efficients) is statistically significant at 5% level. While adjusted R squared is -0.02% indicating model does not explain variation in the FFD, F-statistics of the model is statistically insignificant as p-value > 0.05.
+
+Histogram in the residual checks is symmetric, there is no random pattern in the residuals in the range of (-40, 60). However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is serial correlation at 5% of statistical level.
+
+All vif values are below 10 indicating there model has no issue with high multicollinearity.
+
+Overall, model is not a good fit for the given data and can not be further investigated.
+
+**Relative Humidity without Intercept**
+```{r, error=FALSE}
+task2_hum1_a <- dlm(formula = FFD ~ RelHumidity -1, 
+                      data = data.frame(FFD_df),
+                      q = 8)
+
+summary_residual_analysis(task2_hum1_a)
+```
+Summary depicts that, not a single lag-weights(co-efficients) is statistically significant at 5% level. While adjusted R squared is 99.14% indicating model explains only 99.14% of variation in the FFD, F-statistics of the model is statistically significant as p-value < 0.05.
+
+Histogram in the residual checks has long right tail, there is no random pattern in the residuals in the range of (-20, 40). However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is no serial correlation at 5% of statistical level.
+
+All vif values are below 10 indicating there model has no issue with high multicollinearity.
+
+Overall, model is not a good fit for the given data and can not be further investigated.
+
+
+#### Model Comparison
+```{r}
+DLM_models <- c("Temperature", "Temperature without Intercept", 
+                "Rainfall", "Rainfall without Intercept",
+                "Radiation Level" , "Radiation Level without Intercept",
+                "Relative Humidity","Relative Humidity without Intercept")
+
+DLM_aic <- AIC(task2_temp1$model, task2_temp1_a$model, task2_rain1$model, task2_rain1_a$model, task2_rad1$model,
+               task2_rad1_a$model, task2_hum1$model, task2_hum1_a$model)$AIC
+
+DLM_bic <- BIC(task2_temp1$model, task2_temp1_a$model, task2_rain1$model, task2_rain1_a$model, task2_rad1$model,
+               task2_rad1_a$model, task2_hum1$model, task2_hum1_a$model)$BIC
+
+DLM_mase <- MASE(task2_temp1$model, task2_temp1_a$model, task2_rain1$model, task2_rain1_a$model, task2_rad1$model,
+               task2_rad1_a$model, task2_hum1$model, task2_hum1_a$model)$MASE
+
+DLM_Model_Comparison <- data.frame(DLM_models, DLM_mase, DLM_aic, DLM_bic)
+colnames(DLM_Model_Comparison) <- c("DLM Model","MASE","AIC", "BIC")
+
+kbl(DLM_Model_Comparison) %>% kable_paper()
+```
+
+
+### PolyNomial Distributed Lag Model
+
+The finite DLM model had very poor residual checks. Hence, attempt to fit 2nd order polynomial model with lag = 8 was taken, with each independent time series seperately.
+
+##### 1.Temperature
+```{r}
+task_2_temp2 = polyDlm(y = as.vector(FFD_df$FFD), 
+                        x = as.vector(FFD_df$Temperature), 
+                        q = 8, 
+                        k = 2, 
+                        show.beta = TRUE)
+
+summary_residual_analysis(task_2_temp2)
+```
+Summary depicts that, only `intercept` lag-weights(co-efficients) is statistically significant at 5% level. While adjusted R squared is 29.64% indicating model explains only 29.64% of variation in the FFD, F-statistics of the model is statistically significant as p-value < 0.05.
+
+Histogram in the residual checks has long right tail, there is no random pattern in the residuals in the range of (-50, 50). However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is no serial correlation at 5% of statistical level.
+
+All vif values are above 10 indicating the model has issue with high multicollinearity.
+
+Overall, model is not a good fit for the given data and can not be further investigated.
+
+
+##### 2.Rainfall
+```{r}
+task_2_rain2 = polyDlm(y = as.vector(FFD_df$FFD), 
+                        x = as.vector(FFD_df$Rainfall), 
+                        q = 8, 
+                        k = 2, 
+                        show.beta = TRUE)
+
+summary_residual_analysis(task_2_rain2)
+```
+Summary depicts that, only `intercept` lag-weights(co-efficients) is statistically significant at 5% level. While adjusted R squared is 8.37% indicating model explains only 8.37% of variation in the FFD, F-statistics of the model is statistically insignificant as p-value > 0.05.
+
+Histogram in the residual checks has long right tail, there is no random pattern in the residuals in the range of (-50, 80). P-value(< 0.05) in Shapiro-wilk test indicates that residuals are deviates from the assumption of normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is no serial correlation at 5% of statistical level.
+
+There are vif values which are above 10, indicating the model has issue with high multicollinearity.
+
+Overall, model is not a good fit for the given data and can not be further investigated.
+
+
+##### 3. Radiation Level
+```{r}
+task_2_rad2 = polyDlm(y = as.vector(FFD_df$FFD), 
+                        x = as.vector(FFD_df$Radiation), 
+                        q = 8, 
+                        k = 2, 
+                        show.beta = TRUE)
+
+summary_residual_analysis(task_2_rad2)
+```
+Summary depicts that, only `intercept` lag-weights(co-efficients) is statistically significant at 5% level. While adjusted R squared is 7.34% indicating model explains only 7.34% of variation in the FFD, F-statistics of the model is statistically insignificant as p-value > 0.05.
+
+Histogram in the residual checks is symmetric, there is no random pattern in the residuals in the range of (-60, 70). P-value(< 0.05) in Shapiro-wilk test indicates that residuals are deviates from the assumption of normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is no serial correlation at 5% of statistical level.
+
+There are vif values which are above 10, indicating the model has issue with high multicollinearity.
+
+Overall, model is not a good fit for the given data and can not be further investigated.
+
+
+##### 4. Relative Humidity
+```{r}
+task_2_hum2 = polyDlm(y = as.vector(FFD_df$FFD), 
+                        x = as.vector(FFD_df$RelHumidity), 
+                        q = 8, 
+                        k = 2, 
+                        show.beta = TRUE)
+
+summary_residual_analysis(task_2_hum2)
+```
+Summary depicts that, only `intercept` lag-weights(co-efficients) is statistically significant at 5% level. While adjusted R squared is -0.62% indicating model doen not explains any variation in the FFD, F-statistics of the model is statistically insignificant as p-value > 0.05.
+
+Histogram in the residual checks has right long tail, there is no random pattern in the residuals in the range of (-40, 80). P-value(< 0.05) in Shapiro-wilk test indicates that residuals are deviates from the assumption of normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is no serial correlation at 5% of statistical level.
+
+There are vif values which are above 10, indicating the model has issue with high multicollinearity.
+
+Overall, model is not a good fit for the given data and can not be further investigated.
+
+
+#### Model Comparison
+```{r}
+ 
+poly_models <- c("Temperature", "Rainfall", "Radiation Level", "Relative Humidity")
+
+poly_aic <- AIC(task_2_temp2$model, task_2_rain2$model, task_2_rad2$model, task_2_hum2$model)$AIC
+
+poly_bic <- BIC(task_2_temp2$model, task_2_rain2$model, task_2_rad2$model, task_2_hum2$model)$BIC
+
+poly_mase <- MASE(task_2_temp2$model, task_2_rain2$model, task_2_rad2$model, task_2_hum2$model)$MASE
+
+poly_Model_Comparison <- data.frame(poly_models, poly_mase, poly_aic, poly_bic)
+colnames(poly_Model_Comparison) <- c("Poly Model","MASE","AIC", "BIC")
+
+kbl(poly_Model_Comparison) %>% kable_paper()
+```
+
+
+
+### Koyck Distributed Lag Model
+
+The Koyck Distributed Lag Model was fitted on the given data(separetely for each independent time series)
+
+##### 1.Temperature
+```{r}
+task_2_temp3 = koyckDlm(x = as.vector(FFD_df$Temperature), 
+                         y = as.vector(FFD_df$FFD))
+summary_residual_analysis(task_2_temp3)
+```
+From the summary section, it is conclude that all co-efficients are statistically insignificant. Overall koyck DLM model is also statistically insignificant with p-value > 0.05. While adjusted R squared is -3.50%.
+
+The statistically insignificant Weak instruments test is indicating that model at the first stage of least-squares estimation is insignificant. While, statistically insignificant Wu-Hausman test indicates that there is no significant correlation between the explanatory variable and the error term.
+
+Histogram in the residual checks is has long right tail, there is no random pattern in the residuals. P-value(< 0.05) in Shapiro-wilk test indicates that residuals are significantly deviates from the normal distribution assumption. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is no serial correlation at 5% of statistical level with p-value(<0.05).
+
+As all vif value is < 10, there is no issue of multi-collinearity.
+
+Even though Koyck Model has poor residual checks.
+
+##### 2.Rainfall
+```{r}
+task_2_rain3 = koyckDlm(x = as.vector(FFD_df$Rainfall), 
+                         y = as.vector(FFD_df$FFD))
+summary_residual_analysis(task_2_rain3)
+```
+From the summary section, it is conclude that all co-efficients are statistically insignificant. Overall koyck DLM model is also statistically insignificant with p-value > 0.05. While adjusted R squared is -48%.
+
+The statistically insignificant Weak instruments test is indicating that model at the first stage of least-squares estimation is insignificant. While, statistically insignificant Wu-Hausman test indicates that there is no significant correlation between the explanatory variable and the error term.
+
+Histogram in the residual checks is has long right tail, there is no random pattern in the residuals. P-value(< 0.05) in Shapiro-wilk test indicates that residuals are significantly deviates from the normal distribution assumption. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is no serial correlation at 5% of statistical level with p-value(<0.05).
+
+As all vif value is < 10, there is no issue of multi-collinearity.
+
+Even though Koyck Model has poor residual checks.
+
+##### 3.Radiation Level
+```{r}
+task_2_rad3 = koyckDlm(x = as.vector(FFD_df$Radiation), 
+                         y = as.vector(FFD_df$FFD))
+summary_residual_analysis(task_2_rad3)
+```
+From the summary section, it is conclude that all co-efficients are statistically insignificant. Overall koyck DLM model is also statistically insignificant with p-value > 0.05. While adjusted R squared is -20.88%.
+
+The statistically insignificant Weak instruments test is indicating that model at the first stage of least-squares estimation is insignificant. While, statistically insignificant Wu-Hausman test indicates that there is no significant correlation between the explanatory variable and the error term.
+
+Histogram in the residual checks is has long right tail, there is no random pattern in the residuals. P-value(< 0.05) in Shapiro-wilk test indicates that residuals are significantly deviates from the normal distribution assumption. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is no serial correlation at 5% of statistical level with p-value(<0.05).
+
+As all vif value is < 10, there is no issue of multi-collinearity.
+
+Even though Koyck Model has poor residual checks.
+
+##### 4.Relative Humidity
+```{r}
+task_2_hum3 = koyckDlm(x = as.vector(FFD_df$RelHumidity), 
+                         y = as.vector(FFD_df$FFD))
+summary_residual_analysis(task_2_hum3)
+```
+From the summary section, it is conclude that all co-efficients are statistically insignificant. Overall koyck DLM model is also statistically insignificant with p-value > 0.05. While adjusted R squared is -20%.
+
+The statistically insignificant Weak instruments test is indicating that model at the first stage of least-squares estimation is insignificant. While, statistically insignificant Wu-Hausman test indicates that there is no significant correlation between the explanatory variable and the error term.
+
+Histogram in the residual checks is has long right tail, there is no random pattern in the residuals. P-value(< 0.05) in Shapiro-wilk test indicates that residuals are significantly deviates from the normal distribution assumption. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is no serial correlation at 5% of statistical level with p-value(<0.05).
+
+As all vif value is < 10, there is no issue of multi-collinearity.
+
+Even though Koyck Model has poor residual checks.
+
+#### Model Comparison
+```{r, message=FALSE}
+koyck_models <- c("Temperature", "Rainfall", "Radiation Level", "Relative Humidity")
+
+koyck_aic <- c(AIC(task_2_temp3), AIC(task_2_rain3), AIC(task_2_rad3), AIC(task_2_hum3))
+
+koyck_bic <- c(BIC(task_2_temp3), BIC(task_2_rain3), BIC(task_2_rad3), BIC(task_2_hum3))
+
+koyck_mase <- MASE(lm(task_2_temp3$model), lm(task_2_rain3$model), lm(task_2_rad3$model), lm(task_2_hum3$model))$MASE
+```
+
+```{r}
+koyck_Model_Comparison <- data.frame(koyck_models, koyck_mase, koyck_aic, koyck_bic)
+colnames(koyck_Model_Comparison) <- c("Koyck Model","MASE","AIC", "BIC")
+
+kbl(koyck_Model_Comparison) %>% kable_paper()
+```
+
+### Autoregressive Distributed Lag Model
+
+The attempt to fit ARDL DLM was taken to find the more appropriate model than Koyck distributed lag model.
+
+The loop was used to find the ardlDLM(p,q) parameters with range of lag lengths. AIC(), BIC() and MASE() criteria was taken to find the optimal lag order p and q.
+
+The attempt to fit the seperate model for each separate independent sereies will take place as task is to fit the **`univariate regression models`**. 
+
+##### 1. Temperature
+```{r}
+for (i in 1:5)
+{
+  for(j in 1:5)
+  { 
+    model_ardlm <- ardlDlm(formula = FFD ~ Temperature, 
+                           data = data.frame(FFD_df), 
+                           p = i,
+                           q = j)
+    cat("p =", i, 
+        "q =" , j,
+        "AIC =", AIC(model_ardlm$model), 
+        "BIC =", BIC(model_ardlm$model),
+        "MASE =", MASE(model_ardlm)$MASE, "\n")
+  }
+}
+```
+It is observed that the values of `AIC()` and `BIC()` is lowest for q = 1 as p is increased.
+
+Ergo, on the base of AIC(), BIC() value, the following parameters were taken to fit the Auto-Regressive Distributed Lag Models.
+
+ardlDLM(3,1)
+
+ardlDLM(4,1)
+
+ardlDLM(5,1),
+
+All three models **`with and without the intercept`** for independent series `Temperature` were investigated.
+
+**ardlDLM(3,1)**
+```{r}
+task_2_temp4_1 = ardlDlm(formula = FFD ~ Temperature, 
+                   data = data.frame(FFD_df), 
+                   p = 3,
+                   q = 1)
+
+summary_residual_analysis(task_2_temp4_1)
+```
+
+```{r}
+task_2_temp4_1_a = ardlDlm(formula = FFD ~ Temperature -1, 
+                   data = data.frame(FFD_df), 
+                   p = 3,
+                   q = 1)
+
+summary_residual_analysis(task_2_temp4_1_a)
+```
+
+**ardlDLM(4,1)**
+```{r}
+task_2_temp4_2 = ardlDlm(formula = FFD ~ Temperature, 
+                         data = data.frame(FFD_df), 
+                         p = 4,
+                         q = 1)
+
+summary_residual_analysis(task_2_temp4_2)
+```
+
+```{r}
+task_2_temp4_2_a = ardlDlm(formula = FFD ~ Temperature -1, 
+                         data = data.frame(FFD_df), 
+                         p = 4,
+                         q = 1)
+
+summary_residual_analysis(task_2_temp4_2_a)
+```
+
+**ardlDLM(5,1)**
+```{r, error=FALSE}
+task_2_temp4_3 = ardlDlm(formula = FFD ~ Temperature,
+                         data = data.frame(FFD_df),
+                         p = 5,
+                         q = 1)
+
+summary_residual_analysis(task_2_temp4_3)
+```
+
+```{r, error=FALSE}
+task_2_temp4_3_a = ardlDlm(formula = FFD ~ Temperature - 1, 
+                         data = data.frame(FFD_df), 
+                         p = 5,
+                         q = 1)
+
+summary_residual_analysis(task_2_temp4_3_a)
+```
+**ARDL Models with intercept (Temperature)**
+
+From all the model Summaries, it is observed that every Auto-Regressive Distributed lag model with intercept are statistically insignificant at 5% level. Adjusted r-squared is aroundnegative for each model **`models with intercept, x = Temperature`** indicating model does not explains any variation in the FFD.
+
+All co-effecients are insignificant for all ardlDLM models. 
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks has long right tail. Residals are appeared to be little random as they are around the mean level, they are in the range of (-50, 50). ACF plot suggests there is no significant correlation exist in residuals. However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are not normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports no serial correlation at 5% of statistical level with p-value(>0.05).
+
+All vif values below 10 for each model, indicating model has no issue of high multicollinearity.
+
+Overall, residual diagnostics of each model is poor.
+
+**ARDL Models without intercept (Temperature)**
+
+From all the model Summaries, it is observed that all models are statistically significant at 5% level. Adjusted r-squared is around 99% with highest for **`ardlDLM(3,1) without intercept, x = Temperature`** indicating model explains 99% of variation in the FFD.
+
+All co-effecients are insignificant for all ardlDLM models. 
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks has long right tail. Residals are appeared to be random as they are around the mean level, but they are in the range of (-50, 75). ACF plot suggests there is no significant correlation exist in residuals. However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed. Hence, diagnostic checks are good for this model.
+
+Breusch-Godfrey test supports no serial correlation at 5% of statistical level with p-value(>0.05).
+
+There are vif values above 10 for each model, indicating model has issue of high multicollinearity.
+
+Overall, residual diagnostics of each model is poor, but better then with intercept.
+
+
+##### 2.Rainfall
+```{r}
+for (i in 1:5)
+{
+  for(j in 1:5)
+  { 
+    model_ardlm <- ardlDlm(formula = FFD ~ Rainfall, 
+                           data = data.frame(FFD_df), 
+                           p = i,
+                           q = j)
+    cat("p =", i, 
+        "q =" , j,
+        "AIC =", AIC(model_ardlm$model), 
+        "BIC =", BIC(model_ardlm$model),
+        "MASE =", MASE(model_ardlm)$MASE, "\n")
+  }
+}
+```
+It is observed that the values of `AIC()` and `BIC()` is lowest for q = 1 as p is increased.
+
+Ergo, on the base of AIC(), BIC() value, the following parameters were taken to fit the Auto-Regressive Distributed Lag Models.
+
+ardlDLM(3,1)
+
+ardlDLM(4,1)
+
+ardlDLM(5,1),
+
+All three models **`with and without the intercept`** for independent series `Rainfall` were investigated.
+
+
+**ardlDLM(3,1)**
+```{r}
+task_2_rain4_1 = ardlDlm(formula = FFD ~ Rainfall, 
+                   data = data.frame(FFD_df), 
+                   p = 3,
+                   q = 1)
+
+summary_residual_analysis(task_2_rain4_1)
+```
+
+```{r}
+task_2_rain4_1_a = ardlDlm(formula = FFD ~ Rainfall -1, 
+                   data = data.frame(FFD_df), 
+                   p = 3,
+                   q = 1)
+
+summary_residual_analysis(task_2_rain4_1_a)
+```
+
+**ardlDLM(4,1)**
+```{r}
+task_2_rain4_2 = ardlDlm(formula = FFD ~ Rainfall, 
+                         data = data.frame(FFD_df), 
+                         p = 4,
+                         q = 1)
+
+summary_residual_analysis(task_2_rain4_2)
+```
+
+```{r}
+task_2_rain4_2_a = ardlDlm(formula = FFD ~ Rainfall -1, 
+                         data = data.frame(FFD_df), 
+                         p = 4,
+                         q = 1)
+
+summary_residual_analysis(task_2_rain4_2_a)
+```
+
+**ardlDLM(5,1)**
+```{r, error=FALSE, message=FALSE}
+task_2_rain4_3 = ardlDlm(formula = FFD ~ Rainfall, 
+                         data = data.frame(FFD_df), 
+                         p = 5,
+                         q = 1)
+
+summary_residual_analysis(task_2_rain4_3)
+```
+
+```{r, error=FALSE, message=FALSE}
+task_2_rain4_3_a = ardlDlm(formula = FFD ~ Rainfall -1, 
+                         data = data.frame(FFD_df), 
+                         p = 5,
+                         q = 1)
+
+summary_residual_analysis(task_2_rain4_3_a)
+```
+**ARDL Models with intercept (Rainfall)**
+
+From all the model Summaries, it is observed that every Auto-Regressive Distributed lag model with intercept are statistically insignificant at 5% level. Adjusted r-squared is negative for each model **` models with intercept, x = Rainfall`** indicating model does not explains any variation in the FFD.
+
+Intercept is significant, while all other co-effecients are insignificant for all ardlDLM models. 
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks has long right tail. Residals are appeared to be little random as they are around the mean level, they are in the range of (-50, 50) and shows slightly downward trend. ACF plot suggests there is no significant correlation exist in residuals. However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports no serial correlation at 5% of statistical level with p-value(>0.05).
+
+All vif values below 10 for each model, indicating model has no issue of high multicollinearity.
+
+Overall, residual diagnostics of each model is poor.
+
+**ARDL Models without intercept (Rainfall)**
+
+From all the model Summaries, it is observed that all models are statistically significant at 5% level. Adjusted r-squared is around 99% with highest for **`ardlDLM(3,1) without intercept, x = rainfall`** indicating model explains 99% of variation in the FFD.
+
+`FFD.1` is significant in all models, while `rainfall.1` is significant in `ardlDLM(3,1)`. All other co-effecients are insignificant for all ardlDLM models. 
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks has long right tail. Residals are appeared to be random as they are around the mean level, but they are in the range of (-50, 75). ACF plot suggests there is no significant correlation exist in residuals. However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed. Hence, diagnostic checks are good for this model.
+
+Breusch-Godfrey test supports no serial correlation at 5% of statistical level with p-value(>0.05).
+
+There are vif values above 10 for each model, indicating model has issue of high multicollinearity.
+
+Overall, residual diagnostics of each model is poor, but better then with intercept.
+
+##### 3.Radiation Level
+```{r}
+for (i in 1:5)
+{
+  for(j in 1:5)
+  { 
+    model_ardlm <- ardlDlm(formula = FFD ~ Radiation, 
+                           data = data.frame(FFD_df), 
+                           p = i,
+                           q = j)
+    cat("p =", i, 
+        "q =" , j,
+        "AIC =", AIC(model_ardlm$model), 
+        "BIC =", BIC(model_ardlm$model),
+        "MASE =", MASE(model_ardlm)$MASE, "\n")
+  }
+}
+```
+It is observed that the values of `AIC()` and `BIC()` is lowest for q = 1 as p is increased.
+
+Ergo, on the base of AIC(), BIC() value, the following parameters were taken to fit the Auto-Regressive Distributed Lag Models.
+
+ardlDLM(3,1)
+
+ardlDLM(4,1)
+
+ardlDLM(5,1),
+
+All three models **`with and without the intercept`** for independent series `Radiation Level` were investigated.
+
+**ardlDLM(3,1)**
+```{r}
+task_2_rad4_1 = ardlDlm(formula = FFD ~ Radiation, 
+                   data = data.frame(FFD_df), 
+                   p = 3,
+                   q = 1)
+
+summary_residual_analysis(task_2_rad4_1)
+```
+
+```{r}
+task_2_rad4_1_a = ardlDlm(formula = FFD ~ Radiation -1, 
+                   data = data.frame(FFD_df), 
+                   p = 3,
+                   q = 1)
+
+summary_residual_analysis(task_2_rad4_1_a)
+```
+
+
+**ardlDLM(4,1)**
+```{r}
+task_2_rad4_2 = ardlDlm(formula = FFD ~ Radiation, 
+                         data = data.frame(FFD_df), 
+                         p = 4,
+                         q = 1)
+
+summary_residual_analysis(task_2_rad4_2)
+```
+
+```{r}
+task_2_rad4_2_a = ardlDlm(formula = FFD ~ Radiation -1, 
+                         data = data.frame(FFD_df), 
+                         p = 4,
+                         q = 1)
+
+summary_residual_analysis(task_2_rad4_2_a)
+```
+
+**ardlDLM(5,1)**
+```{r, error=FALSE}
+task_2_rad4_3 = ardlDlm(formula = FFD ~ Radiation, 
+                         data = data.frame(FFD_df), 
+                         p = 5,
+                         q = 1)
+
+summary_residual_analysis(task_2_rad4_3)
+```
+
+```{r, error=FALSE}
+task_2_rad4_3_a = ardlDlm(formula = FFD ~ Radiation, 
+                         data = data.frame(FFD_df), 
+                         p = 5,
+                         q = 1)
+
+summary_residual_analysis(task_2_rad4_3_a)
+```
+
+**ARDL Models with intercept (Radiation Level)**
+
+From all the model Summaries, it is observed that every Auto-Regressive Distributed lag model with intercept are statistically insignificant at 5% level. Adjusted r-squared is negative for each model **`autoregressive models with intercept, x = Radiaton Level`** indicating model does not explains any variation in the FFD.
+
+All co-effecients are insignificant for all ardlDLM models. 
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks has long right tail. Residals are appeared to be little random as they are around the mean level, they are in the range of (-50, 75). ACF plot suggests there is no significant correlation exist in residuals. However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed. Hence, diagnostic checks are good for this model.
+
+Breusch-Godfrey test supports no serial correlation at 5% of statistical level with p-value(>0.05).
+
+All vif values below 10 for each model, indicating model has no issue of high multicollinearity.
+
+Overall, residual diagnostics of each model is poor
+
+**ARDL Models without intercept (Radiation Level)**
+
+From all the model Summaries, it is observed that **`ardlDLM(3,1) and ardlDLM(4,1) without intercept, x = radiation level`** are statistically significant at 5% level. Adjusted r-squared is around 99% for indicating model explains 99% of variation in the FFD.
+
+All co-effecients are insignificant for all ardlDLM models. 
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks has long right tail. Residals are appeared to be random as they are around the mean level, but they are in the range of (-50, 75). ACF plot suggests there is no significant correlation exist in residuals. However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed, while residuals of `ardlDLM(5,1)` are not as p-value > 0.05 in shapiro-wilk test for this model. 
+
+Hence, diagnostic checks are good for this model.
+
+Breusch-Godfrey test supports no serial correlation at 5% of statistical level with p-value(>0.05).
+
+There are vif values above 10 for each model, indicating model has issue of high multicollinearity.
+
+Overall, residual diagnostics of each model is poor, but better then with intercept.
+
+##### 4.Relative Humidity
+```{r}
+for (i in 1:5)
+{
+  for(j in 1:5)
+  { 
+    model_ardlm <- ardlDlm(formula = FFD ~ RelHumidity, 
+                           data = data.frame(FFD_df), 
+                           p = i,
+                           q = j)
+    cat("p =", i, 
+        "q =" , j,
+        "AIC =", AIC(model_ardlm$model), 
+        "BIC =", BIC(model_ardlm$model),
+        "MASE =", MASE(model_ardlm)$MASE, "\n")
+  }
+}
+```
+It is observed that the values of `AIC()` and `BIC()` is lowest for q = 1 as p is increased.
+
+Ergo, on the base of AIC(), BIC() value, the following parameters were taken to fit the Auto-Regressive Distributed Lag Models.
+
+ardlDLM(3,1)
+
+ardlDLM(4,1)
+
+ardlDLM(5,1),
+
+All three models **`with and without the intercept`** for independent series `Relative Humidity` were investigated.
+
+
+**ardlDLM(3,1)**
+```{r}
+task_2_hum4_1 = ardlDlm(formula = FFD ~ RelHumidity, 
+                   data = data.frame(FFD_df), 
+                   p = 3,
+                   q = 1)
+
+summary_residual_analysis(task_2_hum4_1)
+```
+
+```{r}
+task_2_hum4_1_a = ardlDlm(formula = FFD ~ RelHumidity -1, 
+                   data = data.frame(FFD_df), 
+                   p = 3,
+                   q = 1)
+
+summary_residual_analysis(task_2_hum4_1_a)
+```
+
+**ardlDLM(4,1)**
+```{r}
+task_2_hum4_2 = ardlDlm(formula = FFD ~ RelHumidity, 
+                         data = data.frame(FFD_df), 
+                         p = 4,
+                         q = 1)
+
+summary_residual_analysis(task_2_hum4_2)
+```
+
+```{r}
+task_2_hum4_2_a = ardlDlm(formula = FFD ~ RelHumidity -1, 
+                         data = data.frame(FFD_df), 
+                         p = 4,
+                         q = 1)
+
+summary_residual_analysis(task_2_hum4_2_a)
+```
+
+**ardlDLM(5,1)**
+```{r}
+task_2_hum4_3 = ardlDlm(formula = FFD ~ RelHumidity, 
+                         data = data.frame(FFD_df), 
+                         p = 5,
+                         q = 1)
+
+summary_residual_analysis(task_2_hum4_3)
+```
+
+```{r}
+task_2_hum4_3_a = ardlDlm(formula = FFD ~ RelHumidity -1, 
+                         data = data.frame(FFD_df), 
+                         p = 5,
+                         q = 1)
+
+summary_residual_analysis(task_2_hum4_3_a)
+```
+
+**ARDL Models with intercept (Relative Humidity)**
+
+From all the model Summaries, it is observed that every Auto-Regressive Distributed lag model with intercept are statistically insignificant at 5% level. Adjusted r-squared is negative for each model **`autoregressive models with intercept, x = Relative Humidity`** indicating model does not explains any variation in the FFD.
+
+All co-effecients are insignificant for all ardlDLM models. 
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks has long right tail. Residals are appeared to be little random as they are around the mean level but have slightly downward trend, they are in the range of (-50, 75). ACF plot suggests there is no significant correlation exist in residuals. However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed, while residuals of `ardlDLM(5,1)` are not as p-value > 0.05 in shapiro-wilk test for this model. 
+
+Hence, diagnostic checks are good for this model.
+
+Breusch-Godfrey test supports no serial correlation at 5% of statistical level with p-value(>0.05).
+
+All vif values below 10 for each model, indicating model has no issue of high multicollinearity.
+
+Overall, residual diagnostics of each model is poor
+
+**ARDL Models without intercept (Relative Humidity)**
+
+From all the model Summaries, it is observed that every Auto-Regressive Distributed lag model without intercept was statistically significant at 5% level. Adjusted r-squared is around 99% for all model with highest 99.23% for **`ardlDLM(3,1) for x = Relative Humidity`** indicating model explains 99% of variation in the FFD
+
+All co-effecients are insignificant for all ardlDLM models. 
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks has long right tail. Residals are appeared to be random as they are around the mean level, but they are in the range of (-50, 75). ACF plot suggests there is no significant correlation exist in residuals. However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed, while residuals of `ardlDLM(5,1)` are not as p-value > 0.05 in shapiro-wilk test for this model. 
+
+Hence, diagnostic checks are good for this model.
+
+Breusch-Godfrey test supports no serial correlation at 5% of statistical level with p-value(>0.05).
+
+There are vif values above 10 for each model, indicating model has issue of high multicollinearity.
+
+Overall, residual diagnostics of each model is poor, but better then with intercept.
+
+
+#### Model Comparison
+```{r}
+
+ARDL_models <- c("Temperature(3,1)", "Temperature(3,1) without Intercept",
+                 "Temperature(4,1)", "Temperature(4,1) without Intercept",
+                 "Temperature(5,1)", "Temperature(5,1) without Intercept",
+                 "Rainfall(3,1)", "Rainfall(3,1) without Intercept",
+                 "Rainfall(4,1)", "Rainfall(4,1) without Intercept",
+                 "Rainfall(5,1)", "Rainfall(5,1) without Intercept",
+                 "Radiation Level(3,1)", "Radiation Level(3,1) without Intercept",
+                 "Radiation Level(4,1)", "Radiation Level(4,1) without Intercept",
+                 "Radiation Level(5,1)", "Radiation Level(5,1) without Intercept",
+                 "Relative Humidity(3,1)", "Relative Humidity(3,1) without Intercept",
+                 "Relative Humidity(4,1)", "Relative Humidity(4,1) without Intercept",
+                 "Relative Humidity(5,1)", "Relative Humidity(5,1) without Intercept")
+
+ARDL_aic <- AIC(task_2_temp4_1$model, task_2_temp4_1_a$model,
+                task_2_temp4_2$model, task_2_temp4_2_a$model,
+                task_2_temp4_3$model, task_2_temp4_3_a$model,
+                task_2_rain4_1$model, task_2_rain4_1_a$model,
+                task_2_rain4_2$model, task_2_rain4_2_a$model,
+                task_2_rain4_3$model, task_2_rain4_3_a$model,
+                task_2_rad4_1$model, task_2_rad4_1_a$model,
+                task_2_rad4_2$model, task_2_rad4_2_a$model,
+                task_2_rad4_3$model, task_2_rad4_3_a$model,
+                task_2_hum4_1$model, task_2_hum4_1_a$model,
+                task_2_hum4_2$model, task_2_hum4_2_a$model,
+                task_2_hum4_3$model, task_2_hum4_3_a$model)$AIC
+
+ARDL_bic <- BIC(task_2_temp4_1$model, task_2_temp4_1_a$model,
+                task_2_temp4_2$model, task_2_temp4_2_a$model,
+                task_2_temp4_3$model, task_2_temp4_3_a$model,
+                task_2_rain4_1$model, task_2_rain4_1_a$model,
+                task_2_rain4_2$model, task_2_rain4_2_a$model,
+                task_2_rain4_3$model, task_2_rain4_3_a$model,
+                task_2_rad4_1$model, task_2_rad4_1_a$model,
+                task_2_rad4_2$model, task_2_rad4_2_a$model,
+                task_2_rad4_3$model, task_2_rad4_3_a$model,
+                task_2_hum4_1$model, task_2_hum4_1_a$model,
+                task_2_hum4_2$model, task_2_hum4_2_a$model,
+                task_2_hum4_3$model, task_2_hum4_3_a$model)$BIC
+
+ARDL_mase <- MASE(task_2_temp4_1, task_2_temp4_1_a, 
+                  task_2_temp4_2, task_2_temp4_2_a,
+                  task_2_temp4_3,task_2_temp4_3_a,
+                  task_2_rain4_1, task_2_rain4_1_a,
+                  task_2_rain4_2, task_2_rain4_2_a, 
+                  task_2_rain4_3, task_2_rain4_3_a,
+                  task_2_rad4_1, task_2_rad4_1_a,
+                  task_2_rad4_2, task_2_rad4_2_a,
+                  task_2_rad4_3, task_2_rad4_3_a,
+                  task_2_hum4_1, task_2_hum4_1_a,
+                  task_2_hum4_2, task_2_hum4_2_a,
+                  task_2_hum4_3, task_2_hum4_3_a)$MASE
+
+
+ARDL_Model_Comparison <- data.frame(ARDL_models, ARDL_mase, ARDL_aic, ARDL_bic)
+colnames(ARDL_Model_Comparison) <- c("ARDL Model","MASE","AIC", "BIC")
+
+kbl(ARDL_Model_Comparison) %>% kable_paper()
+```
+
+
+### Dynamic Models
+
+The attempt was taken to fit the Dynamic models to yearly first flowering day (FFD) time series.
+
+There is no clear intervention point in the series, Hence, in the dynamic models, there will be not `S.T` components.
+
+##### 1.FFD
+
+**dynlm_1**
+```{r}
+task_2_model5_1 = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + trend(FFD_TS))
+summary(task_2_model5_1)
+checkresiduals(task_2_model5_1)
+```
+
+```{r}
+task_2_model5_1_a = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + trend(FFD_TS) -1)
+summary(task_2_model5_1_a)
+checkresiduals(task_2_model5_1_a)
+```
+**dynlm_2**
+```{r}
+task_2_model5_2 = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + L(FFD_TS , k = 2 ) + trend(FFD_TS))
+summary(task_2_model5_2)
+checkresiduals(task_2_model5_2)
+```
+
+```{r}
+task_2_model5_2_a = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + L(FFD_TS , k = 2 ) + trend(FFD_TS) -1)
+summary(task_2_model5_2_a)
+checkresiduals(task_2_model5_2_a)
+```
+
+**Dynamic Model with Intercept (FFD)**
+
+From all the model Summaries, it is observed that all dynamic models are statistically insignificant at 5% level. The adjust R2 is too small, around 3% only, indicating model can explain only 3% variation in FFD. 
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks is appeared to be symmentric, but residuals are not completly random and range of residuals is between(-30, 30). Hence, diagnostic checks are poor for these models.
+
+
+**Dynamic Model without Intercept (FFD)**
+
+From all the model Summaries, it is observed that all dynamic models are statistically insignificant at 5% level. The adjust R2 is about 99% indicating model can explain 99% variation in FFD.
+
+First lag `L(FFD_TS, k = 1)` is significant in all models, while `trend(FFD_TS)` is insignificant in all models.
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks is appeared to be symmentric, but residuals are appeared as random and range of residuals is between(-100, 100). Hence, diagnostic checks are poor for these models.
+
+
+##### 2.Temperature
+
+**dynlm_3**
+```{r}
+task_2_temp5_1 = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + temp_2_TS + trend(FFD_TS))
+summary(task_2_model5_1)
+checkresiduals(task_2_model5_1)
+```
+
+```{r}
+task_2_temp5_1_a = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + temp_2_TS + trend(FFD_TS) -1)
+summary(task_2_model5_1_a)
+checkresiduals(task_2_model5_1_a)
+```
+
+
+**dynlm_4**
+```{r}
+task_2_temp5_2 = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + L(FFD_TS , k = 2 ) + temp_2_TS)
+summary(task_2_temp5_2)
+checkresiduals(task_2_temp5_2)
+```
+
+```{r}
+task_2_temp5_2_a = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + L(FFD_TS , k = 2 ) + temp_2_TS -1)
+summary(task_2_temp5_2_a)
+checkresiduals(task_2_temp5_2_a)
+```
+
+**Dynamic Model with Intercept (Temperature)**
+
+From all the model Summaries, it is observed that all dynamic models are statistically insignificant at 5% level.
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks has long right tail, but residuals are appeared to be random and range of residuals is between(-50, 70). There is no significant correlation left in ACF plot. Hence, diagnostic checks are poor for these models.
+
+
+**Dynamic Model without Intercept (Temperature)**
+
+From all the model Summaries, it is observed that all dynamic models are statistically insignificant at 5% level. The adjust R2 is about 99% indicating model can explain 99% variation in FFD.
+
+First lag `L(FFD_TS, k = 1)` is significant in all models, while `temp_2_TS` is insignificant `dynlm_4`in all models.
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks is appeared to be symmentric, but residuals are not random and range of residuals is between(-100, 100). There is no significant correlation left in the ACF plot. Hence, diagnostic checks are poor for these models.
+
+##### 3.Rainfall
+
+**dynlm_5**
+```{r}
+task_2_rain5_1 = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + rain_TS + trend(FFD_TS))
+summary(task_2_rain5_1)
+checkresiduals(task_2_rain5_1)
+```
+
+```{r}
+task_2_rain5_1_a = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + rain_TS + trend(FFD_TS) -1)
+summary(task_2_rain5_1_a)
+checkresiduals(task_2_rain5_1_a)
+```
+
+
+**dynlm_6**
+```{r}
+task_2_rain5_2 = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + L(FFD_TS , k = 2 ) + rain_TS + trend(FFD_TS) )
+summary(task_2_rain5_2)
+checkresiduals(task_2_rain5_2)
+```
+
+```{r}
+task_2_rain5_2_a = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + L(FFD_TS , k = 2 ) + rain_TS + trend(FFD_TS) -1)
+summary(task_2_rain5_2_a)
+checkresiduals(task_2_rain5_2_a)
+```
+
+**dynlm_7**
+```{r}
+task_2_rain5_3 = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + L(FFD_TS , k = 2 ) + rain_TS + L(rain_TS, k = 1) + trend(FFD_TS) )
+summary(task_2_rain5_3)
+checkresiduals(task_2_rain5_3)
+```
+
+```{r}
+task_2_rain5_3_a = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + L(FFD_TS , k = 2 ) + rain_TS + L(rain_TS, k = 1) + trend(FFD_TS) -1)
+summary(task_2_rain5_3_a)
+checkresiduals(task_2_rain5_3_a)
+```
+
+**Dynamic Model with Intercept (Rainfall)**
+
+From all the model Summaries, it is observed that all dynamic models are statistically insignificant at 5% level.
+
+`intercept` is significant in all models, while all other coefficients are insignificant in all models.
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks are appeares as symmetric, but residuals are appeared to be random and range of residuals is between(-50, 50). There is no significant correlation left in ACF plot. Hence, diagnostic checks are poor for these models.
+
+
+**Dynamic Model without Intercept (Rainfall)**
+
+From all the model Summaries, it is observed that all dynamic models are statistically insignificant at 5% level. The adjust R2 is about 99% indicating model can explain 99% variation in FFD.
+
+First lag `L(FFD_TS, k = 1)` is significant in all models. All other coefficients are insignificant for all models.
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks is appeared to be symmentric, but residuals are not random and range of residuals is between(-100, 100). There is no significant correlation left in the ACF plot. Hence, diagnostic checks are poor for these models.
+
+##### 4.Radiation Level
+
+**dynlm_8**
+```{r}
+task_2_rad5_1 = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + radiation_TS + trend(FFD_TS))
+summary(task_2_rad5_1)
+checkresiduals(task_2_rad5_1)
+```
+
+```{r}
+task_2_rad5_1_a = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + radiation_TS + trend(FFD_TS) -1)
+summary(task_2_rad5_1_a)
+checkresiduals(task_2_rad5_1_a)
+```
+
+**dynlm_9**
+```{r}
+task_2_rad5_2 = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + L(FFD_TS , k = 2 ) + radiation_TS)
+summary(task_2_model5_2)
+checkresiduals(task_2_rad5_2)
+```
+
+```{r}
+task_2_rad5_2_a = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + L(FFD_TS , k = 2 ) + radiation_TS -1)
+summary(task_2_model5_2_a)
+checkresiduals(task_2_rad5_2_a)
+```
+
+**Dynamic Model with Intercept (Radiation Level)**
+
+From all the model Summaries, it is observed that all dynamic models are statistically insignificant at 5% level.
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks are appeares as symmetric, but residuals are appeared to be random and range of residuals is between(-50, 50). There is no significant correlation left in ACF plot. Hence, diagnostic checks are poor for these models.
+
+
+**Dynamic Model without Intercept (Radiation Level)**
+
+From all the model Summaries, it is observed that all dynamic models are statistically insignificant at 5% level. The adjust R2 is about 99% indicating model can explain 99% variation in FFD.
+
+First lag `L(FFD_TS, k = 1)` is significant in `dynlm_9`, while `radiation_TS` is significant in `dynlm_8`. All other coefficients are insignificant for all models.
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks is appeared to be symmentric, but residuals are not random and range of residuals is between(-50, 50). There is no significant correlation left in the ACF plot. Hence, diagnostic checks are poor for these models.
+
+##### 5.Relative Humidity
+
+**dynlm_10**
+```{r}
+task_2_hum5_1 = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + humidity_TS + trend(FFD_TS))
+summary(task_2_hum5_1)
+checkresiduals(task_2_hum5_1)
+```
+
+```{r}
+task_2_hum5_1_a = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + humidity_TS + trend(FFD_TS) -1)
+summary(task_2_hum5_1_a)
+checkresiduals(task_2_hum5_1_a)
+```
+
+**dynlm_11**
+```{r}
+task_2_hum5_2 = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + L(FFD_TS , k = 2 ) + humidity_TS)
+summary(task_2_hum5_2)
+checkresiduals(task_2_hum5_2)
+```
+
+
+```{r}
+task_2_hum5_2_a = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + L(FFD_TS , k = 2 ) + humidity_TS -1)
+summary(task_2_hum5_2_a)
+checkresiduals(task_2_hum5_2_a)
+```
+
+
+**Dynamic Model with Intercept(Relative Humidity)**
+
+From all the model Summaries, it is observed that all dynamic models are statistically insignificant at 5% level.
+
+All coefficients are statistically insignificant.
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks has long tail, but residuals are appeared to be random and range of residuals is between(-50, 70). There is no significant correlation left in ACF plot. Hence, diagnostic checks are poor for these models.
+
+
+**Dynamic Model without Intercept (Relative Humidity)**
+
+From all the model Summaries, it is observed that all dynamic models are statistically insignificant at 5% level. The adjust R2 is about 99% indicating model can explain 99% variation in FFD.
+
+`humidity_TS` is significant in all models. All other coefficients are insignificant for all models.
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks is appeared to be symmentric, but residuals are not random and range of residuals is between(-50, 70). There is no significant correlation left in the ACF plot. Hence, diagnostic checks are poor for these models.
+
+
+##### 6.Combination of Predictors
+
+**dynlm_12**
+```{r}
+task_2_comb5_1 = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + temp_2_TS + rain_TS + trend(FFD_TS))
+summary(task_2_comb5_1)
+checkresiduals(task_2_comb5_1)
+```
+
+```{r}
+task_2_comb5_1_a = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + temp_2_TS + rain_TS + trend(FFD_TS) -1)
+summary(task_2_comb5_1_a)
+checkresiduals(task_2_comb5_1_a)
+```
+**dynlm_13**
+```{r}
+task_2_comb5_2 = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + temp_2_TS + rain_TS)
+summary(task_2_comb5_2)
+checkresiduals(task_2_comb5_2)
+```
+
+```{r}
+task_2_comb5_2_a = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + temp_2_TS + rain_TS -1)
+summary(task_2_comb5_2_a)
+checkresiduals(task_2_comb5_2_a)
+```
+
+**dynlm_14**
+```{r}
+task_2_comb5_3 = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + L(FFD_TS , k = 2 ) + temp_2_TS + rain_TS + trend(FFD_TS))
+summary(task_2_comb5_3)
+checkresiduals(task_2_comb5_3)
+```
+
+```{r}
+task_2_comb5_3_a = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + L(FFD_TS , k = 2 ) + temp_2_TS + rain_TS + trend(FFD_TS) -1)
+summary(task_2_comb5_3_a)
+checkresiduals(task_2_comb5_3_a)
+```
+**Dynamic Model with Intercept(Temp + Rain)**
+
+From all the model Summaries, it is observed that all dynamic models are statistically insignificant at 5% level.
+
+Only `intercept` is statistically significant. All other coefficients are statistically insignificant.
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks has long tail, but residuals are appeared to be random and range of residuals is between(-50, 70). There is no significant correlation left in ACF plot. Hence, diagnostic checks are poor for these models.
+
+
+**Dynamic Model without Intercept(Temp + Rain)**
+
+From all the model Summaries, it is observed that all dynamic models are statistically insignificant at 5% level. The adjust R2 is about 99% indicating model can explain 99% variation in FFD.
+
+`Temp_2_TS` is significant in all models, while `L(FFD_TS, k = 1)` is significant in `dynlm_12, dynlm_13`. All other coefficients are insignificant for all models.
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks is appeared to be symmentric, but residuals are not random and range of residuals is between(-50, 70). There is no significant correlation left in the ACF plot. Hence, diagnostic checks are poor for these models.
+
+#### Model Comparison
+```{r}
+
+dynlm_models <- c("dynlm_1", "dynlm_1 without Intercept",
+                  "dynlm_2", "dynlm_2 without Intercept",
+                  "dynlm_3", "dynlm_3 without Intercept",
+                  "dynlm_4", "dynlm_4 without Intercept",
+                  "dynlm_5", "dynlm_5 without Intercept",
+                  "dynlm_6", "dynlm_6 without Intercept",
+                  "dynlm_7", "dynlm_7 without Intercept",
+                  "dynlm_8", "dynlm_8 without Intercept",
+                  "dynlm_9", "dynlm_9 without Intercept",
+                  "dynlm_10", "dynlm_10 without Intercept",
+                  "dynlm_11", "dynlm_11 without Intercept",
+                  "dynlm_12", "dynlm_12 without Intercept",
+                  "dynlm_13", "dynlm_13 without Intercept",
+                  "dynlm_14", "dynlm_14 without Intercept")
+
+dynlm_x <- c(rep("FFD", 4), rep("Temperature", 4), rep("Rainfall", 6), rep("Radiation Level", 4), 
+       rep("Relative Humidity", 4), rep("Temperature + Rainfall", 6))
+
+dynlm_aic <- c(AIC(task_2_model5_1), AIC(task_2_model5_1_a), 
+                 AIC(task_2_model5_2), AIC(task_2_model5_2_a),
+                 AIC(task_2_temp5_1), AIC(task_2_temp5_1_a),
+                 AIC(task_2_temp5_2), AIC(task_2_temp5_2_a),
+                 AIC(task_2_rain5_1), AIC(task_2_rain5_1_a),
+                 AIC(task_2_rain5_2), AIC(task_2_rain5_2_a), 
+                 AIC(task_2_rain5_3), AIC(task_2_rain5_3_a),
+                 AIC(task_2_rad5_1), AIC(task_2_rad5_1_a),
+                 AIC(task_2_rad5_2), AIC(task_2_rad5_2_a),
+                 AIC(task_2_hum5_1), AIC(task_2_hum5_1_a),
+                 AIC(task_2_hum5_2), AIC(task_2_hum5_2_a),
+                 AIC(task_2_comb5_1), AIC(task_2_comb5_1_a),
+                 AIC(task_2_comb5_2), AIC(task_2_comb5_2_a),
+                 AIC(task_2_comb5_3), AIC(task_2_comb5_3_a))
+
+dynlm_bic <- c(BIC(task_2_model5_1), BIC(task_2_model5_1_a), 
+                 BIC(task_2_model5_2), BIC(task_2_model5_2_a),
+                 BIC(task_2_temp5_1), BIC(task_2_temp5_1_a),
+                 BIC(task_2_temp5_2), BIC(task_2_temp5_2_a),
+                 BIC(task_2_rain5_1), BIC(task_2_rain5_1_a),
+                 BIC(task_2_rain5_2), BIC(task_2_rain5_2_a), 
+                 BIC(task_2_rain5_3), BIC(task_2_rain5_3_a),
+                 BIC(task_2_rad5_1), BIC(task_2_rad5_1_a),
+                 BIC(task_2_rad5_2), BIC(task_2_rad5_2_a),
+                 BIC(task_2_hum5_1), BIC(task_2_hum5_1_a),
+                 BIC(task_2_hum5_2), BIC(task_2_hum5_2_a),
+                 BIC(task_2_comb5_1), BIC(task_2_comb5_1_a),
+                 BIC(task_2_comb5_2), BIC(task_2_comb5_2_a),
+                 BIC(task_2_comb5_3), BIC(task_2_comb5_3_a))
+
+dynlm_mase <- c(MASE(lm(task_2_model5_1))$MASE, MASE(lm(task_2_model5_1_a))$MASE, 
+                 MASE(lm(task_2_model5_2))$MASE, MASE(lm(task_2_model5_2_a))$MASE,
+                 MASE(lm(task_2_temp5_1))$MASE, MASE(lm(task_2_temp5_1_a))$MASE,
+                 MASE(lm(task_2_temp5_2))$MASE, MASE(lm(task_2_temp5_2_a))$MASE,
+                 MASE(lm(task_2_rain5_1))$MASE, MASE(lm(task_2_rain5_1_a))$MASE,
+                 MASE(lm(task_2_rain5_2))$MASE, MASE(lm(task_2_rain5_2_a))$MASE, 
+                 MASE(lm(task_2_rain5_3))$MASE, MASE(lm(task_2_rain5_3_a))$MASE,
+                 MASE(lm(task_2_rad5_1))$MASE, MASE(lm(task_2_rad5_1_a))$MASE,
+                 MASE(lm(task_2_rad5_2))$MASE, MASE(lm(task_2_rad5_2_a))$MASE,
+                 MASE(lm(task_2_hum5_1))$MASE, MASE(lm(task_2_hum5_1_a))$MASE,
+                 MASE(lm(task_2_hum5_2))$MASE, MASE(lm(task_2_hum5_2_a))$MASE,
+                 MASE(lm(task_2_comb5_1))$MASE, MASE(lm(task_2_comb5_1_a))$MASE,
+                 MASE(lm(task_2_comb5_2))$MASE, MASE(lm(task_2_comb5_2_a))$MASE,
+                 MASE(lm(task_2_comb5_3))$MASE, MASE(lm(task_2_comb5_3_a))$MASE)
+
+dynlm_Model_Comparison <- data.frame(dynlm_models, dynlm_x, dynlm_mase, dynlm_aic, dynlm_bic)
+colnames(dynlm_Model_Comparison) <- c("dynlm Model","Predictors","MASE","AIC", "BIC")
+
+kbl(dynlm_Model_Comparison) %>% kable_paper()
+
+```
+
+
+## **Exponential smoothing methods**
+
+The attempt to fit the exponential smoothing models was taken. As there is no seasonal pattern in First Flowering Day time series due to yearly data, `seasonality` will not be used, Hence, **`Holt Models`** will be used insted of **`Holt Winters' Models`** with the combination of `exponential = {TRUE, FALSE}` and `damped = {TRUE, FALSE}`.
+
+Hence, all the four possible exponential smoothing models will fitted and checked in loop. 
+
+```{r}
+
+T2_holt_models = c("Damped Holt's method with exponential trend",
+ "Damped Holt's method",
+ "Holt's method with exponential trend",
+ "Holt's method")
+
+T2_exponential = c(TRUE,FALSE)
+T2_damped = c(TRUE,FALSE)
+T2_exponential_models <- expand.grid(T2_exponential, T2_damped)
+T2_Holt_AIC <- array(NA, 4)
+T2_Holt_BIC <- array(NA, 4)
+T2_Holt_MASE <- array(NA, 4)
+T2_levels <- array(NA, dim=c(4,2))
+
+
+for (i in 1:4)
+{
+  T2_Holt_model <- holt(FFD_TS,
+                 exponential = T2_exponential_models[i,1],
+                 damped = T2_exponential_models[i,2],
+                 h = 4)
+  
+  T2_Holt_AIC[i] <- T2_Holt_model$model$aic
+  T2_Holt_BIC[i] <- T2_Holt_model$model$bic
+  T2_Holt_MASE[i] <- accuracy(T2_Holt_model)[6]
+  T2_levels[i,1] <- T2_exponential_models[i,1]
+  T2_levels[i,2] <- T2_exponential_models[i,2]
+  summary(T2_Holt_model)
+  checkresiduals(T2_Holt_model)
+  print(shapiro.test(T2_Holt_model$model$residuals))
+}
+
+T2_results_Holt = data.frame(T2_holt_models, T2_levels, T2_Holt_MASE, T2_Holt_AIC, T2_Holt_BIC)
+colnames(T2_results_Holt) = c("Model", "Exponential","Damped","MASE","AIC", "BIC")
+
+kbl(T2_results_Holt) %>% kable_paper()
+```
+
+**Damped Holt's method with exponential trend**
+
+Residuals of Damped Holt's method with exponential trend (Plot 1) are not completely random and has symmentric histogram. The range of standardise residuals is between (-0.1 to 0.3), ACF plot depicts that there is no strong correlation left in the residuals. P-value(0.2392) of L-jung box test confirm there is no correlation left in the residuals. P-value(< 0.05) in Shapiro-wilk test indicates that residuals are significantly deviates from the normal distribution assumption.
+
+**Damped Holt's method**
+
+Residuals of Damped Holt's method with exponential trend (Plot 1) are not completely random and has symmentric histogram. but, the range of standardise residuals is between (-50 to 75), ACF plot depicts that there is no strong correlation left in the residuals. P-value(0.2467) of L-jung box test confirm there is no correlation left in the residuals. P-value(< 0.05) in Shapiro-wilk test indicates that residuals are significantly deviates from the normal distribution assumption.
+
+**Holt's method with exponential trend**
+
+Residuals from Holt-Winters’ multiplicative method (Plot 3) closely follows previous model (Plot 1).
+
+**Holt's method**
+
+Residuals from Holt-Winters’ additive method (Plot 4) closely follows model (Plot 2).
+
+
+In a nutshell, from above plots, it is observed that dumping the trend does not make noticable difference to the model without damped trend, summary and residuals diagnostics are quite similar.
+
+The **`Holt Method`** method has lowest MASE() value, which is so far the best suitable model.
+
+
+**Formating T2_results_Holt table**
+```{r}
+
+T2_results_Holt$Damped <- factor(T2_results_Holt$Damped,
+                             levels = c(TRUE, FALSE),
+                             labels = c("damped"," "))
+
+T2_results_Holt <- unite(T2_results_Holt,
+                     "Model", c("Model","Damped"), sep = "_")
+
+T2_results_Holt <- T2_results_Holt[,-c(2)]
+kbl(T2_results_Holt) %>% kable_paper()
+```
+
+## **State-space Models**
+
+The additive and multiplicative errors can be added to exponential smoothing method. This models are called as state-space model. The attempt was taken to fit the state-space models. Since, first flowering day time series is yearly, there is no seasality. Hence, 3rd component of ETS model **`S = seasonality`** will ne `N = None`. 
+
+The 3 state-space models, `ets_models = {AAN, MAN, MMN}` were fitted with the combination of `damped = {TRUE, FALSE}`. Some variations of State-Space models were forbidden.
+
+```{r}
+T2_ets_models = c("AAN", "MAN", "MMN")
+T2_damped = c(TRUE,FALSE)
+T2_ETS_models <- expand.grid(T2_ets_models, T2_damped)
+
+T2_ETS_AIC <- array(NA, 6)
+T2_ETS_BIC <- array(NA, 6)
+T2_ETS_MASE <- array(NA, 6)
+T2_levels <- array(NA, dim=c(6,2))
+
+for (i in 1:6){
+  T2_ETS <- ets(FFD_TS, 
+                model = toString(T2_ETS_models[i, 1]), 
+                damped = T2_ETS_models[i,2])
+  T2_ETS_AIC[i] <- T2_ETS$aic
+  T2_ETS_BIC[i] <- T2_ETS$bic
+  T2_ETS_MASE[i] <- accuracy(T2_ETS)[6]
+  T2_levels[i,1] <- toString(T2_ETS_models[i,1])
+  T2_levels[i,2] <- T2_ETS_models[i,2]
+  print(summary(T2_ETS))
+  checkresiduals(T2_ETS)
+  print(shapiro.test(T2_ETS$residuals))
+}
+
+T2_results_ETS = data.frame(T2_levels, T2_ETS_MASE, T2_ETS_AIC, T2_ETS_BIC)
+colnames(T2_results_ETS) = c("Model","Damped","MASE","AIC", "BIC")
+
+kbl(T2_results_ETS) %>% kable_paper()
+
+```
+
+
+**AAN_damped**
+
+Residuals of AAN_damped method with exponential trend (Plot 1) are not completely random and histogram has long right tail. The range of standardise residuals is between (-50 to 75), ACF plot depicts that there is no strong correlation left in the residuals. P-value(0.2467) of L-jung box test confirm there is no correlation left in the residuals. P-value(< 0.05) in Shapiro-wilk test indicates that residuals are significantly deviates from the normal distribution assumption.
+
+**MAN_damped**
+
+Residualsof MAN_damped method with exponential trend (Plot 2) are not completely random and histogram has long right tail. The range of standardise residuals is between (-0.10 to 0.20), ACF plot depicts that there is no strong correlation left in the residuals. P-value(0.2415) of L-jung box test confirm there is no correlation left in the residuals. P-value(< 0.05) in Shapiro-wilk test indicates that residuals are significantly deviates from the normal distribution assumption.
+
+**MMN_damped**
+
+Residualsof MMN_damped method with exponential trend (Plot 3) are not completely random and histogram has long right tail. The range of standardise residuals is between (-0.10 to 0.20), ACF plot depicts that there is no strong correlation left in the residuals. P-value(0.239) of L-jung box test confirm there is no correlation left in the residuals. P-value(< 0.05) in Shapiro-wilk test indicates that residuals are significantly deviates from the normal distribution assumption.
+
+**AAN**
+
+The AAN model(Plot 4) closely follows AAN_damped model(Plot 1)
+
+**MAN**
+
+The MAN model(Plot 5) closely follows MAN_damped model(Plot 2)
+
+
+**MMN**
+
+The MMN model(Plot 6) closely follows MMN_damped model(Plot 3)
+
+
+Overall, the state-space model with lowest MASE() value is ETS(A,Ad,N), which is consist of Additive Errors, Additive Damped Trend and No Seasonality.
+
+
+**Formating T2_results_ETS table **
+```{r}
+
+T2_results_ETS$Damped <- factor(T2_results_ETS$Damped,
+                             levels = c(TRUE, FALSE),
+                             labels = c("damped"," "))
+
+T2_results_ETS <- unite(T2_results_ETS,
+                     "Model", c("Model","Damped"), sep = "_")
+
+kbl(T2_results_ETS) %>% kable_paper()
+```
+
+## **Forecasting**
+
+### Finite Distributed Lag Model
+
+Following table display the Finite Distributed Lag modesl with respective `MASE, AIC, BIC`  in ascending order of **`MASE`**
+
+```{r}
+DLM_sorted_MASE <- DLM_Model_Comparison %>% arrange(MASE)
+
+kbl(DLM_sorted_MASE) %>% kable_paper()
+```
+Finite DLM model with Intercept and `Rainfall` as predictor gives the lowest `MASE(), AIC(), BIC()` 
+
+**Prediction Chart**
+```{r}
+DLM_forecasting <-dLagM::forecast(task2_rain1,x = as.vector(rain_next),h=4)
+
+
+plot(ts(c(as.vector(FFD_TS), as.vector(DLM_forecasting$forecasts)),start =1984),
+     col ="#f01b1d",
+     xlim = c(1984,2019.5),type = 'l',
+     ylab ="FFD", 
+     main ="Forecast of Fisrt Flowreing Day(DLM), x=rainfall")
+
+lines(FFD_TS,type = 'l')
+
+legend("topleft", 
+       lty = 1, 
+       col = c("black", "#f01b1d"), 
+       c("Data", "Prediction"))
+```
+
+**Prediction Points**
+```{r}
+t2_Time_point <- c("2015", "2016", "2017", "2018")
+t2_DLM_points <- DLM_forecasting$forecasts
+
+t2_DLM_prediction_points <- data.frame(t2_Time_point, t2_DLM_points)
+colnames(t2_DLM_prediction_points) = c("Time","Point Forecast")
+
+kable(t2_DLM_prediction_points) %>% kable_paper()
+```
+
+
+Above prediction points and plots using Finite DLM method gives the brief idea about First Day of Flowering in the years(2015 - 2018) for a specific plant. 
+
+It reports FFD will be 258.84 in 2015, 250.92 in 2016. While in the 2017 year, the first flowering day will see sudden growth to 302.85 and then gradually increase to 332.25 in 2018. 
+
+
+### PolyNomial Distributed Lag Model
+
+Following table display the Polynomial Distributed Lag modesl with respective `MASE, AIC, BIC`  in ascending order of **`MASE`**
+
+```{r}
+poly_sorted_MASE <- poly_Model_Comparison %>% arrange(MASE)
+
+kbl(poly_sorted_MASE) %>% kable_paper()
+```
+Poly DLM model with `Radiation Level` as predictor gives the lowest `MASE(), AIC(), BIC()`. 
+
+**Prediction Chart**
+```{r}
+
+poly_forecasting <- dLagM::forecast(task_2_rain2,x = as.vector(rain_next),h=4)
+
+plot(ts(c(as.vector(FFD_TS), as.vector(poly_forecasting$forecasts)),start =1984),
+     col ="#f01b1d",
+     xlim = c(1984,2019.5),type = 'l',
+     ylab ="FFD", 
+     main ="Forecast of Fisrt Flowreing Day (polyDLM), x=rainfall")
+
+lines(FFD_TS,type = 'l')
+
+legend("topleft", 
+       lty = 1, 
+       col = c("black", "#f01b1d"), 
+       c("Data", "Prediction"))
+```
+
+**Prediction Points**
+```{r}
+t2_interval_poly = dLagM::forecast(interval = TRUE, task_2_rain2, x = as.vector(rain_next),h=4)
+t2_interval_poly$forecasts
+```
+
+Above prediction points and plots using Finite poly method gives the brief idea about First Day of Flowering in the years(2015 - 2018) for a specific plant. 
+
+It reports FFD will gradually increase from 284.54 in 2015 to 327.15 in 2018. While 95% confidence interval will also increased gradually for the same time period.
+
+
+### Koyck Distributed Lag Model
+
+Following table display the Koyck Distributed Lag modesl with respective `MASE, AIC, BIC`  in ascending order of **`MASE`**
+
+```{r}
+koyck_sorted_MASE <- koyck_Model_Comparison %>% arrange(MASE)
+
+kbl(koyck_sorted_MASE) %>% kable_paper()
+```
+Koyck DLM model with `Temperature` as predictor gives the lowest `MASE(), AIC(), BIC()` 
+
+**Prediction Chart**
+```{r}
+koyck_forecasting <- dLagM::forecast(task_2_temp3,x = as.vector(temp_next),h=4)
+
+
+plot(ts(c(as.vector(FFD_TS), as.vector(koyck_forecasting$forecasts)),start =1984),
+     col ="#f01b1d",
+     xlim = c(1984,2019.5),type = 'l',
+     ylab ="FFD", 
+     main ="Forecast of Fisrt Flowreing Day (Koyck DLM), x=temp")
+
+lines(FFD_TS,type = 'l')
+
+legend("topleft", 
+       lty = 1, 
+       col = c("black", "#f01b1d"), 
+       c("Data", "Prediction"))
+```
+**Prediction Points**
+```{r}
+t2_interval_koyck = dLagM::forecast(interval = TRUE, task_2_temp3, x = as.vector(temp_next),h=4)
+t2_interval_koyck$forecasts
+```
+Above prediction points and plots using Finite koyck method gives the brief idea about First Day of Flowering in the years(2015 - 2018) for a specific plant. 
+
+It reports FFD will be fluctuating around the mean level of 290 for the 2015 - 2018, indicating first flowering will be on 287th day in 2015, 291st day in 2016, 291st day in 2017 and 290th day in 2018 for specific plant. 
+
+### Autoregressive Distributed Lag Model
+
+Following table display the Autoregressive Distributed Lag modesl with respective `MASE, AIC, BIC`  in ascending order of **`MASE`**
+
+```{r}
+ARDL_sorted_MASE <- ARDL_Model_Comparison %>% arrange(MASE)
+
+kbl(ARDL_sorted_MASE) %>% kable_paper()
+```
+ardlDLM(3,1) with Intercept and `x = temperature` gives the `lowest MASE()`, `2nd lowest AIC()` and `3rd lowest BIC()` 
+**Prediction Chart**
+
+```{r}
+ardl_forecasting <- dLagM::forecast(task_2_temp4_1,x = as.vector(temp_next),h=4)
+
+
+plot(ts(c(as.vector(FFD_TS), as.vector(ardl_forecasting$forecasts)),start =1984),
+     col ="#f01b1d",
+     xlim = c(1984,2019.5),type = 'l',
+     ylab ="FFD", 
+     main ="Forecast of Fisrt Flowreing Day (ARDL DLM(3,1), x=temp)")
+
+lines(FFD_TS,type = 'l')
+
+legend("topleft", 
+       lty = 1, 
+       col = c("black", "#f01b1d"), 
+       c("Data", "Prediction"))
+```
+**Prediction Points**
+```{r}
+t2_interval_ardl = dLagM::forecast(interval = TRUE, task_2_temp4_1, x = as.vector(temp_next),h=4)
+t2_interval_ardl$forecasts
+```
+Above prediction points and plots using autoregressive distributed lag method gives the brief idea about First Day of Flowering in the years(2015 - 2018) for a specific plant. 
+
+It reports FFD will be increased till 2017 to 306th day, then FFD will slighly decrease to 304th day in 2018.
+
+### Dynamic Models
+
+Following table display the Dynamic Lag modesl with respective `MASE, AIC, BIC`  in ascending order of **`MASE`**
+
+```{r}
+dynlm_sorted_MASE <- dynlm_Model_Comparison %>% arrange(MASE)
+
+kbl(dynlm_sorted_MASE) %>% kable_paper()
+```
+Dynamic model `dynlm_7 with Intercept` and `Rainfall` as predictor gives the `2nd lowest MASE()`. While `lowest MASE()` is given by `dynlm_14 with intercept` model, but it has components of `Temperature + Rainfall`. Task is to do **`Univariate Regression`**
+
+
+
+**`dynlm_7`** model consist of `1st and 2nd lag of FFD time series, trend component of FFD time series, rainfall time series and 1st lag of rainfall time series`.
+
+**`dynlm_7`** = dynlm(FFD_TS ~ L(FFD_TS , k = 1 ) + L(FFD_TS , k = 2 ) + rain_TS + L(rain_TS, k = 1) + trend(FFD_TS) )
+
+**Prediction Chart**
+
+```{r}
+
+q = 4
+n = nrow(task_2_rain5_3$model)
+ffd.frc = array(NA , (n + q))
+ffd.frc[1:n] = FFD_TS[3:length(FFD_TS)]
+trend = array(NA,q)
+trend.start = task_2_rain5_3$model[n,"trend(FFD_TS)"]
+trend = seq(trend.start , trend.start + q/12, 1/12)
+
+
+for(i in 1:q){
+data.new = c(1,ffd.frc[n-1+i],ffd.frc[n-2+i],1,1,trend[i])
+ffd.frc[n+i] = as.vector(task_2_rain5_3$coefficients) %*% data.new
+}
+
+plot(FFD_TS,xlim=c(1984,2018),
+     ylab='FFD',xlab='Year',
+     main = "Next 4 years prediction of First Flowering Day in specific plant")
+
+lines(ts(ffd.frc[(n+1):(n+q)],start=c(2015)),col="#f01b1d")
+
+legend("topleft", 
+       lty = 1, 
+       col = c("black", "#f01b1d"), 
+       c("Data", "Prediction"))
+```
+
+**Prediction Points**
+```{r}
+t2_points_dynlm <- ffd.frc[(n+1):(n+q)]
+
+t2_dynlm_prediction_points <- data.frame(t2_Time_point, t2_points_dynlm)
+colnames(t2_dynlm_prediction_points) = c("Time","Point Forecast")
+
+
+kable(t2_dynlm_prediction_points) %>% kable_paper()
+```
+Above prediction points and plots using dynamic linear method gives the brief idea about First Day of Flowering in the years(2015 - 2018) for a specific plant. 
+
+It reports FFD will be on 310th day in 2015, 319st day in 2016, 317st day in 2017 and 315th day in 2018 for specific plant. 
+
+```{r}
+t2_points_dynlm
+```
+
+### Exponential Smoothing Models
+
+Following table display the Exponential Smoothing modesl with respective `MASE, AIC, BIC`  in ascending order of **`MASE`**
+
+```{r}
+Holt_sorted_MASE <- T2_results_Holt %>% arrange(MASE)
+
+kbl(Holt_sorted_MASE) %>% kable_paper()
+```
+Holt's method  gives the lowest `MASE(), AIC(), BIC()` for exponential smoothing methods. 
+
+**Prediction Chart**
+```{r}
+
+prediction_holt <- holt(FFD_TS,
+                        damped = FALSE,
+                   h = 4)
+
+plot(prediction_holt,
+     main = "Next four years prediction of FFD using Exponential Smoothing Model",
+     ylab = "FFD",
+     fcol = "#f01b1d")
+       
+legend("topleft", 
+       lty = 1, 
+       col = c("black", "#f01b1d"), 
+       c("Data", "Prediction"))
+```
+**Prediction Points**
+```{r}
+kbl(prediction_holt) %>% kable_paper()
+```
+Above prediction points and plots using holt's method(Exponential Smoothing) gives the brief idea about First Day of Flowering in the years(2015 - 2018) for a specific plant. 
+
+It reports FFD will be fluctuating around the mean level of 295 for the 2015 - 2018.
+
+
+### State-Space Models
+
+Following table display the State space modesl with respective `MASE, AIC, BIC`  in ascending order of **`MASE`**
+
+```{r}
+ETS_sorted_MASE <- T2_results_ETS %>% arrange(MASE)
+
+kbl(ETS_sorted_MASE) %>% kable_paper()
+```
+AAN gives the lowest `MASE(), AIC(), BIC()` for State-Space Models.
+
+**Prediction Chart**
+```{r}
+prediction_ETS_2 <- ets(FFD_TS,
+                    model="AAN",
+                    damped = F)
+prediction_ETS_2 <- forecast(prediction_ETS_2)
+
+plot(prediction_ETS_2,
+     main = "Next four years prediction of FFD using ETS(A,A,N) model",
+     ylab = "FFD",
+     fcol = "#f01b1d")
+       
+legend("topleft", 
+       lty = 1, 
+       col = c("black", "#f01b1d"), 
+       c("Data", "Prediction"))
+```
+
+**Prediction Points**
+```{r}
+kbl(prediction_ETS_2) %>% kable_paper()
+```
+Above prediction points and plots using ETS(A,A,N) method gives the brief idea about First Day of Flowering in the years(2015 - 2018) for a specific plant. 
+
+It reports FFD will gradually decreased from 296.25 to 294.41 between the period of (2015-2018).
+
+# **Task - 3(a)**
+
+## **Data Preparation**
+```{r, message=FALSE}
+RBO_df <- read_csv("D:/Study_Material/SEM_4/Forecasting/Assignment3/RBO.csv")
+RBO_prediction <- read_csv("D:/Study_Material/SEM_4/Forecasting/Assignment3/Covariate x-values for Task 3.csv")
+
+RBO_prediction = na.omit(RBO_prediction)
+```
+
+```{r}
+head(RBO_df)
+class(RBO_df)
+```
+
+After importing necessary libraries and dataset, We must convert each variable into time-series object for Time Series Analysis.
+
+```{r}
+RBO_df <- RBO_df[,-c(1)]
+RBO_df_TS <- ts(RBO_df, start = 1984)
+
+RBO_TS <- ts(RBO_df$RBO, start = 1984)
+temp_3_TS <- ts(RBO_df$Temperature, start = 1984)
+rain_2_TS <- ts(RBO_df$Rainfall, start = 1984)
+radiation_2_TS <- ts(RBO_df$Radiation, start = 1984)
+humidity_2_TS <- ts(RBO_df$RelHumidity, start = 1984)
+
+
+temp_2_next <- ts(RBO_prediction$Temperature,start =2015)
+rain_2_next <- ts(RBO_prediction$Rainfall,start =2015)
+rad_2_next <- ts(RBO_prediction$Radiation,start =2015)
+hum_2_next <- ts(RBO_prediction$RelHumidity,start =2015)
+
+
+RBO_df_TS %>% head()
+class(RBO_df_TS)
+```
+
+##### **1.Temperature**
+```{r}
+temp_3_TS %>% head()
+class(temp_3_TS)
+```
+##### **2.Rainfall**
+```{r}
+rain_2_TS %>% head()
+class(rain_2_TS)
+```
+##### **3.Radiation Level**
+
+```{r}
+radiation_2_TS %>% head()
+class(radiation_2_TS)
+```
+##### **4.Relative Humidity**
+
+```{r}
+humidity_2_TS %>% head()
+class(humidity_2_TS)
+```
+##### **5.Rank-based Flowering-Order similarity metric (RBO)**
+
+```{r}
+RBO_TS %>% head()
+class(RBO_TS)
+```
+
+## **Descriptive Analysis**
+
+##### 1.Rank-based Flowering-Order (RBO)
+```{r}
+descriptive_analysis(RBO_TS, "Rank-based Flowering-Order similarity metric (RBO)")
+```
+**Time Series Characteristics**
+
+  **1. Trend** : There is no obvious trend in the time series till 1996, then series show major drop and after that series is increasing at moderate pace, however thers is no decaying patterns in ACF plot.  
+  
+  **2. Seasonality** : Seasonality does not exists in the time series plot.
+  
+  **3. Changing Variance** : There is strong indication of changing variance.
+  
+  **4. Behaviour** : The behaviour is combination of Auto-regressive and moving average. For example, between the year(1996-2001), series is Auto Regressive, while between the years(2001-2011), series is Moving Average.
+  
+  **5. Intervention Point** : There is clear intervention point around yeat 1996. 
+  
+  **6. Stationarity**: ACF plot and Time Series Plot suggests there is no trend. Even though p-value in adf test is > 0.05, p-value < 0.05 in pp test suggest that RBO time series is stationary series with 5% level of significance. PACF plot suggest there is significant correlation at first 2 lags.
+
+
+##### 2. Temperature
+```{r}
+descriptive_analysis(temp_3_TS, "Averaged yearly temperature")
+```
+**Time Series Characteristics**
+
+  **1. Trend** : There is slightly upward trend in the time series, however thers is no decaying patterns in ACF plot.  
+  
+  **2. Seasonality** : Seasonality does not exists in the time series plot.
+  
+  **3. Changing Variance** : There is strong indication of changing variance.
+  
+  **4. Behaviour** : The behaviour is combination of Auto-regressive and moving average. For example, between the year(2000-2004), series is Auto Regressive, while between the years(2004-2012), series is Moving Average.
+  
+  **5. Intervention Point** : There is clear intervention point around yeat 1996. 
+  
+  **6. Stationarity**: ACF plot and Time Series Plot suggests there is no trend. Even though p-value in adf test is > 0.05, p-value < 0.05 in pp test suggest that Temperature time series is stationary series with 5% level of significance. PACF plot suggest there is significant correlation at lag 1.
+
+
+
+##### 3. Rainfall
+```{r}
+descriptive_analysis(rain_2_TS, "Averaged  yearly rainfall")
+```
+**Time Series Characteristics**
+
+  **1. Trend** : There is no obvious trend in the time series and no decaying patterns in ACF plot confirms our finding.  
+  
+  **2. Seasonality** : Seasonality does not exists in the time series plot.
+  
+  **3. Changing Variance** : There is strong indication of changing variance.
+  
+  **4. Behaviour** : The behaviour is combination of Auto-regressive and moving average. For example, between the year(1984-1987), series is Auto Regressive, while between the years(1993-2015), series is Moving Average.
+  
+  **5. Intervention Point** : There is clear intervention point around yeat 1996. 
+  
+  **6. Stationarity**: ACF plot and Time Series Plot suggests there is no trend. Even though p-value in adf test is > 0.05, p-value < 0.05 in pp test suggest that Rainfall time series is stationary series with 5% level of significance. PACF plot suggest there no is significant correlation exist.
+
+
+
+##### 4. Radiation Level
+```{r}
+descriptive_analysis(radiation_2_TS, "Averaged yearly radiation level")
+```
+**Time Series Characteristics**
+
+  **1. Trend** : There is downward trend till the year 1992, then sereis rose again and reached peak level in 2006 year, then series shows downward trend again. However thers is no decaying patterns in ACF plot.  
+  
+  **2. Seasonality** : Seasonality does not exists in the time series plot.
+  
+  **3. Changing Variance** : There is strong indication of changing variance.
+  
+  **4. Behaviour** : The behaviour is combination of Auto-regressive and moving average. For example, between the year(1984-1990), series is Auto Regressive, while between the years(1990-1998), series is Moving Average.
+  
+  **5. Intervention Point** : There is no clear intervention point. 
+  
+  **6. Stationarity**: ACF plot and Time Series Plot suggests there is no trend. however, p-value >0.05  in adf test and pp test suggest that Radiation Level time series is non-stationary series with 5% level of significance. PACF plot suggest there is significant correlation exist at lag 1.
+
+
+##### 5. Relative Humidity
+```{r}
+descriptive_analysis(humidity_2_TS, "Averaged yearly relative humidity")
+```
+**Time Series Characteristics**
+
+  **1. Trend** : There is no obvious trend in the time series, and no decaying patterns in ACF plot confirm finding.  
+  
+  **2. Seasonality** : Seasonality does not exists in the time series plot.
+  
+  **3. Changing Variance** : There is strong indication of changing variance.
+  
+  **4. Behaviour** : The behaviour is moving average.
+  
+  **5. Intervention Point** : There is no clear intervention point. 
+  
+  **6. Stationarity**: ACF plot and Time Series Plot suggests there is no trend. Even though p-value in adf test is > 0.05, p-value < 0.05 in pp test suggest that Relative Humidity time series is stationary series with 5% level of significance. PACF plot suggest there no is significant correlation exist.
+
+
+
+##### 6. Combine Scaled Time Series Plot
+```{r}
+combined <- scale(RBO_df_TS)
+
+plot(combined, 
+     plot.type="s", 
+     col = c("#05386b","#f01b1d","#5c3c92","#d2601a","#1b6535"), 
+     main = "Scaled Time Series Plot of RBO similarity values and 
+     contemporaneous averaged yearly climate variables")
+
+legend("topleft", 
+       lty=1, 
+       col = c("#05386b","#f01b1d","#5c3c92","#d2601a","#1b6535"), 
+       c("RBO","Temperature", "Rainfall", "Radiation Level", "Relative Humidity"))
+```
+The dependent series RBO and independent time series(Temperature, Rainfall, Radiation Level, Relative Humidity) are scaled to fit both the series in one plot. This way we can assume the relatoinship between the series.
+
+From the plot, we can depict that, RBO shares negative relationship with Temperature, Radiation Level, Relative humidity as for high value of RBO, their values are low and vice-versa. 
+
+However, RBO shares positive relationship with Rainfall, as for high value of RBO, value of Rainfall is also little high and vice versa.
+
+To confirm our assumption, we can look at the correlation of both independent and dependent series.
+
+
+**Correlation**
+
+```{r}
+cor(RBO_df_TS) %>% round(3)
+```
+The above correlation matrix confirms the assumption that RBO shares negative relation with temperature, radiation level, Relative Humidity while positive with Rainfall.
+
+
+## **Time Series Regression Methods**
+
+After data exploration, the next step is model fitting, various Time-Series Regression Models are fitted and residual diagnostics checked of respected model to find the best Time Series Regression Model.
+
+### Finite Distributed Lag Model
+
+The independent series `Temperature, Rainfall, Radiaton Level, Relative Humidity` and its lags will help to explain the variation in the dependent series `RBO`. The Lag lenth will be specified in the Finite Distributed Lag Model to create loop which will calculate varios performace measures `AIC()`, `BIC()` and `MASE()` for each lag, and the model with lowest `MASE()` will be taken for further analysis. 
+
+The attempt to fit the seperate model for each separate independent sereies will take place as task is to fit the **`univariate regression models`**. 
+
+##### 1.Temperature
+
+```{r}
+for (i in 1:8)
+{
+  model_dlm <- dlm(formula = RBO ~ Temperature, data = data.frame(RBO_df), q = i)
+  cat("q = ", i, 
+      "AIC = ", AIC(model_dlm$model), 
+      "BIC = ", BIC(model_dlm$model), 
+      "MASE = ", MASE(model_dlm)$MASE, "\n")
+}
+```
+It is observed that the values of  MASE decrease as the lag q increases, so we will fit a finite DLM with a number of lags = 8.
+
+Above output shows that, value of performace measures `MASE()` is decreased as lag increased. So, an attempt to fit the model with lag = 8 was taken.
+```{r, error=FALSE}
+task3_temp1 <- dlm(formula = RBO ~ Temperature, 
+                      data = data.frame(RBO_df),
+                      q = 8)
+
+summary_residual_analysis(task3_temp1)
+
+```
+Summary depicts that, not a single lag-weights(co-efficients) is statistically significant at 5% level. While adjusted R squared is -0.09% indicating model does not explain any variation in the RBO, F-statistics of the model is statistically insignificant as p-value > 0.05.
+
+Histogram in the residual checks is symmetric, there is no random pattern in the residuals. However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is no serial correlation at 5% of statistical level.
+
+All vif values are below 10 indicating there model has no issue with high multicollinearity.
+
+Overall, model is not a good fit for the given data and can not be further investigated.
+
+##### 2.Rainfall
+```{r}
+for (i in 1:8)
+{
+  model_dlm <- dlm(formula = RBO ~ Rainfall, data = data.frame(RBO_df), q = i)
+  cat("q = ", i, 
+      "AIC = ", AIC(model_dlm$model), 
+      "BIC = ", BIC(model_dlm$model), 
+      "MASE = ", MASE(model_dlm)$MASE, "\n")
+}
+```
+It is observed that the values of  MASE decrease as the lag q increases, so we will fit a finite DLM with a number of lags = 8.
+
+Above output shows that, value of performace measures `MASE()` is decreased as lag increased. So, an attempt to fit the model with lag = 8 was taken.
+```{r, error=FALSE}
+task3_rain1 <- dlm(formula = RBO ~ Rainfall, 
+                      data = data.frame(RBO_df),
+                      q = 8)
+
+summary_residual_analysis(task3_rain1)
+```
+Summary depicts that, only `intercept` lag-weights(co-efficients) is statistically significant at 5% level. While adjusted R squared is -0.17% indicating model does not explain any variation in the RBO, F-statistics of the model is statistically insignificant as p-value > 0.05.
+
+Histogram in the residual checks is symmetric, there is no random pattern in the residuals. However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is no serial correlation at 5% of statistical level.
+
+All vif values are below 10 indicating there model has no issue with high multicollinearity.
+
+Overall, model is not a good fit for the given data and can not be further investigated.
+
+
+##### 3.Radiation Level
+```{r}
+for (i in 1:8)
+{
+  model_dlm <- dlm(formula = RBO ~ Radiation, data = data.frame(RBO_df), q = i)
+  cat("q = ", i, 
+      "AIC = ", AIC(model_dlm$model), 
+      "BIC = ", BIC(model_dlm$model), 
+      "MASE = ", MASE(model_dlm)$MASE, "\n")
+}
+```
+It is observed that the values of  MASE decrease as the lag q increases, so we will fit a finite DLM with a number of lags = 8.
+
+Above output shows that, value of performace measures `MASE()` is decreased as lag increased. So, an attempt to fit the model with lag = 8 was taken.
+```{r, error=FALSE}
+task3_rad1 <- dlm(formula = RBO ~ Radiation, 
+                      data = data.frame(RBO_df),
+                      q = 8)
+
+summary_residual_analysis(task3_rad1)
+```
+Summary depicts that, only `intercept` lag-weights(co-efficients) is statistically significant at 5% level. While adjusted R squared is 0.006% indicating model only explain 0.006% variation in the RBO, F-statistics of the model is statistically insignificant as p-value > 0.05.
+
+Histogram in the residual checks is symmetric, there is no random pattern in the residuals. However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is no serial correlation at 5% of statistical level.
+
+All vif values are below 10 indicating there model has no issue with high multicollinearity.
+
+Overall, model is not a good fit for the given data and can not be further investigated.
+
+
+##### 4.Relative Humidity
+```{r}
+for (i in 1:8)
+{
+  model_dlm <- dlm(formula = RBO ~ RelHumidity, data = data.frame(RBO_df), q = i)
+  cat("q = ", i, 
+      "AIC = ", AIC(model_dlm$model), 
+      "BIC = ", BIC(model_dlm$model), 
+      "MASE = ", MASE(model_dlm)$MASE, "\n")
+}
+```
+It is observed that the values of  MASE decrease as the lag q increases, so we will fit a finite DLM with a number of lags = 8.
+
+Above output shows that, value of performace measures `MASE()` is decreased as lag increased. So, an attempt to fit the model with lag = 8 was taken.
+```{r, error=FALSE}
+task3_hum1 <- dlm(formula = RBO ~ RelHumidity, 
+                      data = data.frame(RBO_df),
+                      q = 8)
+
+summary_residual_analysis(task3_hum1)
+```
+Summary depicts that, not a single lag-weights(co-efficients) is statistically significant at 5% level. While adjusted R squared is -40.69% indicating model does not explain any variation in the RBO, F-statistics of the model is statistically insignificant as p-value > 0.05.
+
+Histogram in the residual checks has long right tail, there is no random pattern in the residuals. However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is serial correlation at 5% of statistical level.
+
+All vif values are below 10 indicating there model has no issue with high multicollinearity.
+
+Overall, model is not a good fit for the given data and can not be further investigated.
+
+
+### PolyNomial Distributed Lag Model
+
+The finite DLM model had very poor residual checks. Hence, attempt to fit 2nd order polynomial model with lag = 8 was taken, with each independent time series seperately.
+
+##### 1.Temperature
+```{r}
+task_3_temp2 = polyDlm(y = as.vector(RBO_df$RBO), 
+                        x = as.vector(RBO_df$Temperature), 
+                        q = 8, 
+                        k = 2, 
+                        show.beta = TRUE)
+
+summary_residual_analysis(task_3_temp2)
+```
+Summary depicts that, only `z.t1, z.t2` lag-weights(co-efficients) is statistically significant at 5% level. While adjusted R squared is 12.83% indicating model explains only 12.83% variation in the RBO, F-statistics of the model is statistically insignificant as p-value > 0.05.
+
+Histogram in the residual checks has right long tail, there is no random pattern in the residuals. P-value(> 0.05) in Shapiro-wilk test indicates that residuals are not normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is no serial correlation at 5% of statistical level.
+
+All vif values are above 10, indicating the model has issue with high multicollinearity.
+
+Overall, model is not a good fit for the given data and can not be further investigated.
+
+
+##### 2.Rainfall
+```{r}
+task_3_rain2 = polyDlm(y = as.vector(RBO_df$RBO), 
+                        x = as.vector(RBO_df$Rainfall), 
+                        q = 8, 
+                        k = 2, 
+                        show.beta = TRUE)
+
+summary_residual_analysis(task_3_rain2)
+```
+Summary depicts that, only `intercept, z.t0` lag-weights(co-efficients) is statistically significant at 5% level. While adjusted R squared is 16.1% indicating model explains only 16.1% variation in the RBO, F-statistics of the model is statistically insignificant as p-value > 0.05.
+
+Histogram in the residual checks has right long tail, there is no random pattern in the residuals. P-value(> 0.05) in Shapiro-wilk test indicates that residuals are not normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is no serial correlation at 5% of statistical level.
+
+There are vif values are above 10, indicating the model has issue with high multicollinearity.
+
+Overall, model is not a good fit for the given data and can not be further investigated.
+
+
+##### 3. Radiation Level
+```{r}
+task_3_rad2 = polyDlm(y = as.vector(RBO_df$RBO), 
+                        x = as.vector(RBO_df$Radiation), 
+                        q = 8, 
+                        k = 2, 
+                        show.beta = TRUE)
+
+summary_residual_analysis(task_3_rad2)
+```
+Summary depicts that, only `z.t0, z.t1` lag-weights(co-efficients) is statistically significant at 5% level. While adjusted R squared is 20.6% indicating model explains only 20.6% variation in the RBO, F-statistics of the model is statistically insignificant as p-value > 0.05.
+
+Histogram in the residual checks has right long tail, there is no random pattern in the residuals. P-value(> 0.05) in Shapiro-wilk test indicates that residuals are not normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is no serial correlation at 5% of statistical level.
+
+There are vif values are above 10, indicating the model has issue with high multicollinearity.
+
+Overall, model is not a good fit for the given data and can not be further investigated.
+
+
+##### 4. Relative Humidity
+```{r}
+task_3_hum2 = polyDlm(y = as.vector(RBO_df$RBO), 
+                        x = as.vector(RBO_df$RelHumidity), 
+                        q = 8, 
+                        k = 2, 
+                        show.beta = TRUE)
+
+summary_residual_analysis(task_3_hum2)
+```
+Summary depicts that, not a singke lag-weights(co-efficients) is statistically significant at 5% level. While adjusted R squared is -10.39% indicating model does not explains any variation in the RBO, F-statistics of the model is statistically insignificant as p-value > 0.05.
+
+Histogram in the residual checks has right long tail, there is no random pattern in the residuals. P-value(> 0.05) in Shapiro-wilk test indicates that residuals are not normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is no serial correlation at 5% of statistical level.
+
+There are vif values are above 10, indicating the model has issue with high multicollinearity.
+
+Overall, model is not a good fit for the given data and can not be further investigated.
+
+### Koyck Distributed Lag Model
+
+The Koyck Distributed Lag Model was fitted on the given data(separetely for each independent time series).
+
+##### 1.Temperature
+```{r}
+task_3_temp3 = koyckDlm(x = as.vector(RBO_df$Temperature), 
+                         y = as.vector(RBO_df$RBO))
+summary_residual_analysis(task_3_temp3)
+```
+From the summary section, it is conclude that only `y1` co-efficients is statistically significant. Overall koyck DLM model is also statistically significant with p-value < 0.05. While adjusted R squared is 8.89%.
+
+The statistically insignificant Weak instruments test is indicating that model at the first stage of least-squares estimation is insignificant. While, statistically insignificant Wu-Hausman test indicates that there is no significant correlation between the explanatory variable and the error term.
+
+Histogram in the residual checks is has long right tail, there is little random pattern in the residuals. P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is no serial correlation at 5% of statistical level.
+
+As all vif value is < 10, there is no issue of multi-collinearity.
+
+Koyck Model has poor residual checks.
+
+##### 2.Rainfall
+```{r}
+task_3_rain3 = koyckDlm(x = as.vector(RBO_df$Rainfall), 
+                         y = as.vector(RBO_df$RBO))
+summary_residual_analysis(task_3_rain3)
+```
+From the summary section, it is conclude that all co-efficients is statistically insignificant. Overall koyck DLM model is also statistically insignificant with p-value > 0.05. While adjusted R squared is -3078%.
+
+The statistically insignificant Weak instruments test is indicating that model at the first stage of least-squares estimation is insignificant. While, statistically insignificant Wu-Hausman test indicates that there is no significant correlation between the explanatory variable and the error term.
+
+Histogram in the residual checks is has long right tail, there is little random pattern in the residuals. P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is no serial correlation at 5% of statistical level.
+
+As all vif values are > 10, there is issue of multi-collinearity.
+
+Koyck Model has poor residual checks.
+
+##### 3.Radiation Level
+```{r}
+task_3_rad3 = koyckDlm(x = as.vector(RBO_df$Radiation), 
+                         y = as.vector(RBO_df$RBO))
+summary_residual_analysis(task_3_rad3)
+```
+From the summary section, it is conclude that only `y.t` co-efficients is statistically significant. Overall koyck DLM model is also statistically significant with p-value < 0.05. While adjusted R squared is -6.49%.
+
+The statistically insignificant Weak instruments test is indicating that model at the first stage of least-squares estimation is insignificant. While, statistically insignificant Wu-Hausman test indicates that there is no significant correlation between the explanatory variable and the error term.
+
+Histogram in the residual checks is has long right tail, there is little random pattern in the residuals. P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is no serial correlation at 5% of statistical level.
+
+As all vif values are < 10, there is no issue of multi-collinearity.
+
+Koyck Model has poor residual checks.
+
+
+
+##### 4.Relative Humidity
+```{r}
+task_3_hum3 = koyckDlm(x = as.vector(RBO_df$RelHumidity), 
+                         y = as.vector(RBO_df$RBO))
+summary_residual_analysis(task_3_hum3)
+```
+From the summary section, it is conclude that only `y.t` co-efficients is statistically significant. Overall koyck DLM model is also statistically insignificant with p-value > 0.05. While adjusted R squared is 16.82%.
+
+The statistically insignificant Weak instruments test is indicating that model at the first stage of least-squares estimation is insignificant. While, statistically insignificant Wu-Hausman test indicates that there is no significant correlation between the explanatory variable and the error term.
+
+Histogram in the residual checks is has long right tail, there is little random pattern in the residuals. P-value(> 0.05) in Shapiro-wilk test indicates that residuals are normally distributed. Hence, diagnostic checks are poor for this model.
+
+Breusch-Godfrey test supports there is serial correlation at 5% of statistical level.
+
+As all vif values are < 10, there is no issue of multi-collinearity.
+
+Koyck Model has poor residual checks.
+
+### Autoregressive Distributed Lag Model
+
+The attempt to fit ARDL DLM was taken to find the more appropriate model.
+
+The loop was used to find the ardlDLM(p,q) parameters with range of lag lengths. AIC(), BIC() and MASE() criteria was taken to find the optimal lag order p and q.
+
+The attempt to fit the seperate model for each separate independent sereies will take place as task is to fit the **`univariate regression models`**. 
+
+##### 1. Temperature
+```{r}
+for (i in 1:5)
+{
+  for(j in 1:5)
+  { 
+    model_ardlm <- ardlDlm(formula = RBO ~ Temperature, 
+                           data = data.frame(RBO_df), 
+                           p = i,
+                           q = j)
+    cat("p =", i, 
+        "q =" , j,
+        "AIC =", AIC(model_ardlm$model), 
+        "BIC =", BIC(model_ardlm$model),
+        "MASE =", MASE(model_ardlm)$MASE, "\n")
+  }
+}
+```
+It is observed that the values of `AIC()` and `BIC()` is lowest for q = 3 as p is decreased.
+
+Ergo, on the base of AIC(), BIC() value, the following parameters were taken to fit the Auto-Regressive Distributed Lag Models.
+
+ardlDLM(1,3)
+
+ardlDLM(2,3)
+
+ardlDLM(3,3),
+
+All three models for independent series `Temperature` were investigated.
+
+
+**ardlDLM(1,3)**
+```{r}
+task_3_temp4_1 = ardlDlm(formula = RBO ~ Temperature, 
+                   data = data.frame(RBO_df), 
+                   p = 1,
+                   q = 3)
+
+summary_residual_analysis(task_3_temp4_1)
+```
+**ardlDLM(2,3)**
+```{r}
+task_3_temp4_2 = ardlDlm(formula = RBO ~ Temperature, 
+                         data = data.frame(RBO_df), 
+                         p = 2,
+                         q = 3)
+
+summary_residual_analysis(task_3_temp4_2)
+```
+**ardlDLM(3,3)**
+```{r, error=FALSE}
+task_3_temp4_3 = ardlDlm(formula = RBO ~ Temperature, 
+                         data = data.frame(RBO_df), 
+                         p = 3,
+                         q = 3)
+
+summary_residual_analysis(task_3_temp4_3)
+```
+
+From all the model Summaries, it is observed that every Auto-Regressive Distributed lag model was statistically significant at 5% level. Adjusted r-squared is around 45% for all model with highest 48.46% for **`ardlDLM(1,3) for x = Temperature`** indicating model explains 48.46% of variation in the RBO.
+
+The 2nd Lag of dependent series "RBO" is statistically significant for every ARDL model, while 1st Lag is significant in `ardlDLM(1,3)`. All other co-effecients are insignificant for all ardlDLM models. 
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks is appeared to be symmentric, but residuals are not completly random as there is trend and changing variance. ACF plot suggests there is no significant correlation exist in residuals. However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are not normally distributed. Hence, diagnostic checks are good for this model.
+
+Breusch-Godfrey test supports no serial correlation at 5% of statistical level with p-value(>0.05).
+
+All vif values are below 10, indicating model has no issue of high multicollinearity.
+
+Overall, residual diagnostics of each model is good.
+
+
+##### 2.Rainfall
+```{r}
+for (i in 1:5)
+{
+  for(j in 1:5)
+  { 
+    model_ardlm <- ardlDlm(formula = RBO ~ Rainfall, 
+                           data = data.frame(RBO_df), 
+                           p = i,
+                           q = j)
+    cat("p =", i, 
+        "q =" , j,
+        "AIC =", AIC(model_ardlm$model), 
+        "BIC =", BIC(model_ardlm$model),
+        "MASE =", MASE(model_ardlm)$MASE, "\n")
+  }
+}
+```
+It is observed that the values of `AIC()` and `BIC()` is lowest for q = 3 as p is decreased.
+
+Ergo, on the base of AIC(), BIC() value, the following parameters were taken to fit the Auto-Regressive Distributed Lag Models.
+
+ardlDLM(1,3)
+
+ardlDLM(2,3)
+
+ardlDLM(3,3),
+
+All three models for independent series `Rainfall` were investigated.
+
+
+**ardlDLM(1,3)**
+```{r}
+task_3_rain4_1 = ardlDlm(formula = RBO ~ Rainfall, 
+                   data = data.frame(RBO_df), 
+                   p = 1,
+                   q = 3)
+
+summary_residual_analysis(task_3_rain4_1)
+```
+**ardlDLM(2,3)**
+```{r}
+task_3_rain4_2 = ardlDlm(formula = RBO ~ Rainfall, 
+                         data = data.frame(RBO_df), 
+                         p = 2,
+                         q = 3)
+
+summary_residual_analysis(task_3_rain4_2)
+```
+**ardlDLM(3,3)**
+```{r, error=FALSE, message=FALSE}
+task_3_rain4_3 = ardlDlm(formula = RBO ~ Rainfall, 
+                         data = data.frame(RBO_df), 
+                         p = 3,
+                         q = 3)
+
+summary_residual_analysis(task_3_rain4_3)
+```
+
+From all the model Summaries, it is observed that every Auto-Regressive Distributed lag model was statistically significant at 5% level. Adjusted r-squared is around 42% for all model with highest 44.08% for **`ardlDLM(1,3) for x = Rainfall`** indicating model explains 51.01% of variation in the RBO.
+
+All co-effecients are insignificant for all ardlDLM models. 
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks is appeared to be symmentric, but residuals are not completly random as there is trend and changing variance. ACF plot suggests there is no significant correlation exist in residuals. However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are not normally distributed. While p-value < 0.05 in shapiro-wilk test of ardlDLM(1,3) indicates residuals of `ardlDLM(1,3)` are `normally distributed`. Hence, diagnostic checks are good for this model.
+
+Breusch-Godfrey test supports no serial correlation at 5% of statistical level with p-value(>0.05).
+
+All vif values are below 10, indicating model has no issue of high multicollinearity.
+
+Overall, residual diagnostics of each model is good.
+
+##### 3.Radiation Level
+```{r}
+for (i in 1:5)
+{
+  for(j in 1:5)
+  { 
+    model_ardlm <- ardlDlm(formula = RBO ~ Radiation, 
+                           data = data.frame(RBO_df), 
+                           p = i,
+                           q = j)
+    cat("p =", i, 
+        "q =" , j,
+        "AIC =", AIC(model_ardlm$model), 
+        "BIC =", BIC(model_ardlm$model),
+        "MASE =", MASE(model_ardlm)$MASE, "\n")
+  }
+}
+```
+It is observed that the values of `AIC()` and `BIC()` is lowest for following p and q parameters.
+
+(1,3)
+
+(2,3)
+
+(3,2)
+
+Ergo, on the base of AIC(), BIC() value, the following parameters were taken to fit the Auto-Regressive Distributed Lag Models.
+
+ardlDLM(1,3)
+
+ardlDLM(2,3)
+
+ardlDLM(3,2),
+
+All three models for independent series `Rainfall` were investigated.
+
+
+
+**ardlDLM(1,3)**
+```{r}
+task_3_rad4_1 = ardlDlm(formula = RBO ~ Radiation, 
+                   data = data.frame(RBO_df), 
+                   p = 1,
+                   q = 3)
+
+summary_residual_analysis(task_3_rad4_1)
+```
+**ardlDLM(2,3)**
+```{r}
+task_3_rad4_2 = ardlDlm(formula = RBO ~ Radiation, 
+                         data = data.frame(RBO_df), 
+                         p = 2,
+                         q = 3)
+
+summary_residual_analysis(task_3_rad4_2)
+```
+**ardlDLM(3,2)**
+```{r, error=FALSE}
+task_3_rad4_3 = ardlDlm(formula = RBO ~ Radiation, 
+                         data = data.frame(RBO_df), 
+                         p = 3,
+                         q = 2)
+
+summary_residual_analysis(task_3_rad4_3)
+```
+From all the model Summaries, it is observed that every Auto-Regressive Distributed lag model was statistically significant at 5% level. Adjusted r-squared is around 50.5% for all model with highest 51.01% for **`ardlDLM(1,3) for x = Radiation Level`** indicating model explains 51.01% of variation in the RBO.
+
+The 2nd Lag of dependent series "RBO" is statistically significant for every ARDL model, while 1st Lag is significant in `ardlDLM(3,2), ardlDLM(1,3)` and 1st lag of radiation is significant in `ardlDLM(1,3)`  All other co-effecients are insignificant for all ardlDLM models. 
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks is appeared to be symmentric, but residuals are not completly random as there is changing variance. ACF plot suggests there is no significant correlation exist in residuals. However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are not normally distributed. Hence, diagnostic checks are good for this model.
+
+Breusch-Godfrey test supports no serial correlation at 5% of statistical level with p-value(>0.05).
+
+All vif values are below 10, indicating model has no issue of high multicollinearity.
+
+Overall, residual diagnostics of each model is good.
+
+##### 4.Relative Humidity
+```{r}
+for (i in 1:5)
+{
+  for(j in 1:5)
+  { 
+    model_ardlm <- ardlDlm(formula = RBO ~ RelHumidity, 
+                           data = data.frame(RBO_df), 
+                           p = i,
+                           q = j)
+    cat("p =", i, 
+        "q =" , j,
+        "AIC =", AIC(model_ardlm$model), 
+        "BIC =", BIC(model_ardlm$model),
+        "MASE =", MASE(model_ardlm)$MASE, "\n")
+  }
+}
+```
+It is observed that the values of `AIC()` and `BIC()` is lowest for following p and q parameters.
+
+(1,2)
+
+(2,3)
+
+(3,2)
+
+Ergo, on the base of AIC(), BIC() value, the following parameters were taken to fit the Auto-Regressive Distributed Lag Models.
+
+ardlDLM(1,2)
+
+ardlDLM(2,3)
+
+ardlDLM(3,2),
+
+All three models for independent series `Rainfall` were investigated.
+
+
+**ardlDLM(1,2)**
+```{r}
+task_3_hum4_1 = ardlDlm(formula = RBO ~ RelHumidity, 
+                   data = data.frame(RBO_df), 
+                   p = 1,
+                   q = 2)
+
+summary_residual_analysis(task_3_hum4_1)
+```
+**ardlDLM(2,3)**
+```{r}
+task_3_hum4_2 = ardlDlm(formula = RBO ~ RelHumidity, 
+                         data = data.frame(RBO_df), 
+                         p = 2,
+                         q = 3)
+
+summary_residual_analysis(task_3_hum4_2)
+```
+**ardlDLM(3,2)**
+```{r, error=FALSE}
+task_3_hum4_3 = ardlDlm(formula = RBO ~ RelHumidity, 
+                         data = data.frame(RBO_df), 
+                         p = 3,
+                         q = 2)
+
+summary_residual_analysis(task_3_hum4_3)
+```
+
+From all the model Summaries, it is observed that every Auto-Regressive Distributed lag model was statistically significant at 5% level. Adjusted r-squared is highest 46.84% for **`ardlDLM(3,2) for x = Relative Humidity`** indicating model explains 46.84% of variation in the RBO.
+
+The 2nd Lag of dependent series "RBO" is statistically significant for every ARDL model, while 1st Lag is significant in `ardlDLM(3,2)`, All other co-effecients are insignificant for all ardlDLM models. 
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks is appeared to be symmentric, but residuals are not completly random as there is changing variance. ACF plot suggests there is no significant correlation exist in residuals. However, P-value(> 0.05) in Shapiro-wilk test indicates that residuals are not normally distributed. Hence, diagnostic checks are good for this model.
+
+Breusch-Godfrey test supports no serial correlation at 5% of statistical level with p-value(>0.05).
+
+All vif values are below 10, indicating model has no issue of high multicollinearity.
+
+Overall, residual diagnostics of each model is good.
+
+## **Model Comparison**
+```{r}
+
+attr(task_3_temp3$model,"class") = "lm"
+attr(task_3_rain3$model,"class") = "lm"
+attr(task_3_rad3$model,"class") = "lm"
+attr(task_3_hum3$model,"class") = "lm"
+
+T3_models <- c(rep("Finite DLM",4), rep("Poly DLM",4), rep("Koyck", 4), rep("ARDL",12))
+
+T3_x <- c(rep(c("Temperature", "Rainfall", "Radiation Level", "Relative Humidity"),3), 
+       "temp(1,3)", "temp(2,3)", "temp(3,3)",
+       "rain(1,3)", "rain(2,3)", "rain(3,3)",
+       "rad(1,3)", "rad(2,3)", "rad(3,2)",
+       "hum(1,2)", "temp(2,3)", "hum(3,2)")
+
+T3_aic <- AIC(task3_temp1$model, task3_rain1$model, task3_rad1$model, task3_hum1$model, 
+           task_3_temp2$model, task_3_rain2$model, task_3_rad2$model, task_3_hum2$model,
+           task_3_temp3$model, task_3_rain3$model, task_3_rad3$model, task_3_hum3$model,
+           task_3_temp4_1$model, task_3_temp4_2$model, task_3_temp4_3$model,
+           task_3_rain4_1$model, task_3_rain4_2$model, task_3_rain4_3$model,
+           task_3_rad4_1$model, task_3_rad4_2$model, task_3_rad4_3$model,
+           task_3_hum4_1$model, task_3_hum4_2$model, task_3_hum4_3$model)$AIC
+
+
+T3_bic <- BIC(task3_temp1$model, task3_rain1$model, task3_rad1$model, task3_hum1$model, 
+           task_3_temp2$model, task_3_rain2$model, task_3_rad2$model, task_3_hum2$model,
+           task_3_temp3$model, task_3_rain3$model, task_3_rad3$model, task_3_hum3$model,
+           task_3_temp4_1$model, task_3_temp4_2$model, task_3_temp4_3$model,
+           task_3_rain4_1$model, task_3_rain4_2$model, task_3_rain4_3$model,
+           task_3_rad4_1$model, task_3_rad4_2$model, task_3_rad4_3$model,
+           task_3_hum4_1$model, task_3_hum4_2$model, task_3_hum4_3$model)$BIC
+
+T3_mase <- MASE(task3_temp1$model, task3_rain1$model, task3_rad1$model, task3_hum1$model, 
+           task_3_temp2$model, task_3_rain2$model, task_3_rad2$model, task_3_hum2$model,
+           task_3_temp3$model, task_3_rain3$model, task_3_rad3$model, task_3_hum3$model,
+           task_3_temp4_1, task_3_temp4_2, task_3_temp4_3,
+           task_3_rain4_1, task_3_rain4_2, task_3_rain4_3,
+           task_3_rad4_1, task_3_rad4_2, task_3_rad4_3,
+           task_3_hum4_1, task_3_hum4_2, task_3_hum4_3)$MASE
+
+T3_Model_Comparison <- data.frame(T3_models, T3_x, T3_mase, T3_aic, T3_bic)
+colnames(T3_Model_Comparison) <- c("Model","Predictors", "MASE","AIC", "BIC")
+
+kbl(T3_Model_Comparison) %>% kable_paper()
+```
+
+## **Forecasting**
+
+The model `lowest MASE()` and model with `lowest AIC()` will be choosen to predict the Rank-Based first flowering Similarity Martix (RBO) for the next 3 years.
+
+### MASE as optimal Measure
+
+The Model Comparison Table of Task_3 is arranged with the `ascending order of MASE()`.
+```{r}
+T3_sorted_MASE <- T3_Model_Comparison %>% arrange(MASE)
+kbl(T3_sorted_MASE) %>% kable_paper()
+```
+The Finite DLM model with `Radiation Level` as predictor gives the lowest MASE().
+
+**Prediction Chart**
+```{r}
+DLM_forecasting_2 <-dLagM::forecast(task3_rad1,x = as.vector(rad_2_next),h=3)
+
+
+plot(ts(c(as.vector(RBO_TS), as.vector(DLM_forecasting_2$forecasts)),start =1984),
+     col ="#f01b1d",
+     xlim = c(1984,2019.5),type = 'l',
+     ylab = "RBO", 
+     main = "Next 3 years Forecasting of Flowering-Order (RBO) using Finite DLM (Radiation Level)")
+
+lines(RBO_TS,type = 'l')
+
+legend("topright", 
+       lty = 1, 
+       col = c("black", "#f01b1d"), 
+       c("Data", "Prediction"))
+
+```
+
+**Prediction Points**
+
+```{r}
+t3_DLM_points <- DLM_forecasting_2$forecasts
+
+t3_DLM_prediction_points <- data.frame(t2_Time_point[1:3], t3_DLM_points)
+colnames(t3_DLM_prediction_points) = c("Time","Point Forecast")
+
+kable(t3_DLM_prediction_points) %>% kable_paper()
+
+```
+Above prediction points and plots using Finite DLM gives the brief idea about RBO in the years(2015 - 2018) for a specific plant. 
+
+It reports RBO will be 0.727 in 2015, 0.708 in 2016, 0.713 in 2017, indicating moderate similarity of rank based first day of flowering order matrix in upcoming 4 years(2015-2017) compare to the year 1983.
+
+
+### AIC  as optimal Measure
+
+The Model Comparison Table is arranged with the `ascending order of AIC()`.
+
+```{r}
+T3_sorted_AIC <- T3_Model_Comparison %>% arrange(AIC)
+kbl(T3_sorted_AIC) %>% kable_paper()
+```
+The ardlDLM(1,3) model with `Radiation Level` as predictor gives the lowest AIC().
+
+**Predication Chart**
+```{r}
+DLM_forecasting_3 <-dLagM::forecast(task_3_rad4_1,x = as.vector(rad_2_next),h=3)
+
+
+plot(ts(c(as.vector(RBO_TS), as.vector(DLM_forecasting_3$forecasts)),start =1984),
+     col = "#f01b1d",
+     xlim = c(1984,2019.5),type = 'l',
+     ylab = "RBO", 
+     main = "3 years Forecasting of Flowering-Order (RBO) using ARDL (Radiation Level)")
+
+lines(RBO_TS,type = 'l')
+
+legend("topright", 
+       lty = 1, 
+       col = c("black", "#f01b1d"), 
+       c("Data", "Prediction"))
+
+```
+
+**Prediction Points**
+
+```{r}
+t3_interval_AIC = dLagM::forecast(interval = TRUE,task_3_rad4_1, x = as.vector(rad_2_next),h=4)
+t3_interval_AIC$forecasts
+```
+Above prediction points and plots using ardlDLM(1,3) gives the brief idea about RBO in the years(2015 - 2018) for a specific plant. 
+
+It reports RBO will be 0.718 in 2015, 0.727 in 2016, 0.718 in 2017, 0.722 in 2018, indicating moderate similarity of rank based first day of flowering order matrix in upcoming 3 years(2015-2017) compare to the year 1983. 
+
+# **Task - 3(b)**
+
+The attempt was taken to fit the Dynamic models to Yearly RBO time series.
+
+There is clear intervention point at year 1996 in the series, which is 12th time point.
+
+Hence, in the dynamic models, there will be `S.T, S.T.1` components where **`T = 12`**.
+
+## **Dynamic Models**
+```{r}
+T = 12
+S.T = (1*seq(RBO_TS)>=T)
+S.T.1 = Lag(S.T, +1)
+```
+**dynlm_1**
+```{r}
+task_3_model5_1 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + trend(RBO_TS) + S.T )
+summary(task_2_model5_1)
+checkresiduals(task_2_model5_1)
+```
+**dynlm_2**
+```{r}
+task_3_model5_2 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + L(RBO_TS , k = 2 ) + trend(RBO_TS) + S.T + S.T.1)
+summary(task_3_model5_2)
+checkresiduals(task_3_model5_2)
+```
+
+From all the model Summaries, it is observed that `dynlm_2` is statistically significant at 5% level. Adjusted r-squared is between 75.1% indicating models explains 75.1% of variation in the RBO 
+
+All the coeffiecients of `dynlm_2` are statistically significant at 5% level, except `L(RBO_TS, k = 2)` which is statistically significant at 7% of level.  
+
+Histogram in the residual checks is appeared to be symmentric, but residuals are not completly random, as residuals follow auto-regressive behaviour. There is no statistical correlation left in the residuals dynamic model. 
+
+Hence, diagnostic checks is good for this model.
+
+##### 1.Temperature
+
+**dynlm_3**
+```{r}
+task_3_temp5_1 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + temp_3_TS + trend(RBO_TS) + S.T)
+summary(task_3_temp5_1)
+checkresiduals(task_3_temp5_1)
+```
+**dynlm_4**
+```{r}
+task_3_temp5_2 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + L(RBO_TS , k = 2 ) + temp_3_TS + S.T)
+summary(task_3_temp5_2)
+checkresiduals(task_3_temp5_2)
+```
+**dynlm_5**
+```{r}
+task_3_temp5_3 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + L(RBO_TS , k = 2 ) + temp_3_TS + L(temp_3_TS, k = 1) + trend(RBO_TS) + S.T)
+summary(task_3_temp5_3)
+checkresiduals(task_3_temp5_3)
+```
+**dynlm_6**
+```{r}
+task_3_temp5_4 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + L(RBO_TS , k = 2 ) + temp_3_TS + L(temp_3_TS, k = 1) + S.T + S.T.1 + L(temp_3_TS, k = 2) + trend(RBO_TS))
+summary(task_3_temp5_4)
+checkresiduals(task_3_temp5_4)
+```
+**dynlm_7**
+```{r}
+task_3_temp5_5 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + L(RBO_TS , k = 2 ) + L(RBO_TS , k = 3 ) + temp_3_TS + L(temp_3_TS, k = 1) + L(temp_3_TS, k = 2) + S.T + S.T.1)
+summary(task_3_temp5_5)
+checkresiduals(task_3_temp5_5)
+```
+From all the model Summaries, it is observed that all dynamic models for `temperature` are statistically significant at 5% level. Adjusted r-squared is between (61-73)% in each model indicating models explains (53-73)% of variation in the RBO 
+
+`dynlm_3` records the `lowest adjusted R2 (61.85%)`, while `dynlm_6` records the `highest R2(72.43%)`. 
+
+Except in `dynlm_7`, `S.TTrue, intercept` are significant in all models. 
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks is appeared to be symmentric, but residuals are not completely random. There is no correlation left in the residuals of all `temperature dynamic models`. Hence, diagnostic checks are good for these models.
+
+##### 2.Rainfall
+
+**dynlm_8**
+```{r}
+task_3_rain5_1 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + rain_2_TS + trend(RBO_TS) + S.T)
+summary(task_3_rain5_1)
+checkresiduals(task_3_rain5_1)
+```
+**dynlm_9**
+```{r}
+task_3_rain5_2 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + L(RBO_TS , k = 2 ) + rain_2_TS + trend(RBO_TS) + S.T + S.T.1)
+summary(task_3_rain5_2)
+checkresiduals(task_3_rain5_2)
+```
+**dynlm_10**
+```{r}
+task_3_rain5_3 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + L(RBO_TS , k = 2 ) + rain_2_TS + L(rain_2_TS, k = 1) + trend(RBO_TS) + S.T)
+summary(task_3_rain5_3)
+checkresiduals(task_3_rain5_3)
+```
+**dynlm_11**
+```{r}
+task_3_rain5_4 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + L(RBO_TS , k = 2 ) + L(RBO_TS , k = 3 ) + rain_2_TS + trend(RBO_TS) + S.T)
+summary(task_3_rain5_4)
+checkresiduals(task_3_rain5_4)
+```
+**dynlm_12**
+```{r}
+task_3_rain5_5 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + L(RBO_TS , k = 2 ) + L(RBO_TS , k = 3 ) + rain_2_TS + L(rain_2_TS, k = 1) + trend(RBO_TS) + S.T + S.T.1)
+summary(task_3_rain5_5)
+checkresiduals(task_3_rain5_5)
+```
+
+From all the model Summaries, it is observed that all dynamic models for `Rainfall` are statistically significant at 5% level. Adjusted r-squared is between (63-76)% in each model indicating models explains (63-76)% of variation in the RBO. 
+
+`dynlm_11`records the `lowest adjusted R2 (63.65%)`, while `dynlm_9` records the `highest R2(75.9%)`. 
+
+`S.TTrue, intercept` are significant in all models. While `S.T.1TRUE, trend(RBO_TS), L(RBO_TS, k = 1)` are significant in `dynlm_9` and `dynlm_12`. All other coefficients of all models are insignificant.
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks is appeared to be symmentric, but residuals are not completely random. There is no correlation left in the residuals of all `rainfall dynamic models`. Hence, diagnostic checks are good for these models.
+
+
+##### 3.Radiation Level
+
+**dynlm_13**
+```{r}
+task_3_rad5_1 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + radiation_2_TS + trend(RBO_TS) + S.T)
+summary(task_3_rad5_1)
+checkresiduals(task_3_rad5_1)
+```
+**dynlm_14**
+```{r}
+task_3_rad5_2 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + L(RBO_TS , k = 2 ) + radiation_2_TS + trend(RBO_TS) + S.T + S.T.1)
+summary(task_3_rad5_2)
+checkresiduals(task_3_rad5_2)
+```
+**dynlm_15**
+```{r}
+task_3_rad5_3 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + L(RBO_TS , k = 2 ) + radiation_2_TS + L(radiation_2_TS, k = 1) + trend(RBO_TS) + S.T + S.T.1)
+summary(task_3_rad5_3)
+checkresiduals(task_3_rad5_3)
+```
+**dynlm_16**
+```{r}
+task_3_rad5_4 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + L(RBO_TS , k = 2 ) + L(RBO_TS , k = 3 ) + radiation_2_TS + trend(RBO_TS)+ S.T)
+summary(task_3_rad5_4)
+checkresiduals(task_3_rad5_4)
+```
+**dynlm_17**
+```{r}
+task_3_rad5_5 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + L(RBO_TS , k = 2 ) + L(RBO_TS , k = 3 ) + radiation_2_TS + L(radiation_2_TS, k = 1) + S.T + S.T.1 + trend(RBO_TS))
+summary(task_3_rad5_5)
+checkresiduals(task_3_rad5_5)
+```
+**dynlm_18**
+```{r}
+task_3_rad5_6 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + L(RBO_TS , k = 2 ) + L(RBO_TS , k = 3 ) + L(RBO_TS , k = 4 ) + radiation_2_TS + L(radiation_2_TS, k = 1) + trend(RBO_TS) + S.T + S.T.1)
+summary(task_3_rad5_6)
+checkresiduals(task_3_rad5_6)
+```
+**dynlm_19**
+```{r}
+task_3_rad5_7 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + L(RBO_TS , k = 2 ) + L(RBO_TS , k = 3 ) + L(RBO_TS , k = 4 ) + radiation_2_TS + L(radiation_2_TS, k = 1) + L(radiation_2_TS, k = 2) + trend(RBO_TS) + S.T + S.T.1)
+summary(task_3_rad5_7)
+checkresiduals(task_3_rad5_7)
+```
+
+From all the model Summaries, it is observed that all dynamic models for `Radiation Level` are statistically significant at 5% level. Adjusted r-squared is between (62-76)% in each model indicating models explains (62-76)% of variation in the RBO. 
+
+`dynlm_16`records the `lowest adjusted R2 (62.38%)`, while `dynlm_19` records the `highest R2(76.13%)`. 
+
+`S.TTrue, intercept` are significant in all models. While `S.T.1TRUE` is significant whenever it was included in model. `trend(RBO_TS)` is significant in `dynlm_14, dynlm_15, dynlm_17`. `L(RBO_TS, k = 1)` is significant in `dynlm_14, dynlm_15`. All other coefficients of all models are insignificant.
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks is appeared to be symmentric in most of models, but residuals are not completely random. There is no correlation left in the residuals of all `Radiation Level dynamic models`. Hence, diagnostic checks are good for these models.
+
+
+##### 4.Relative Humidity
+
+**dynlm_20**
+```{r}
+task_3_hum5_1 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + humidity_2_TS + trend(RBO_TS) + S.T)
+summary(task_3_hum5_1)
+checkresiduals(task_3_hum5_1)
+```
+**dynlm_21**
+```{r}
+task_3_hum5_2 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + L(RBO_TS , k = 2 ) + humidity_2_TS + trend(RBO_TS) + S.T)
+summary(task_3_hum5_2)
+checkresiduals(task_3_hum5_2)
+```
+**dynlm_22**
+```{r}
+task_3_hum5_3 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + L(RBO_TS , k = 2 ) + humidity_2_TS + L(humidity_2_TS, k = 1) + trend(RBO_TS) + S.T + S.T.1)
+summary(task_3_hum5_3)
+checkresiduals(task_3_hum5_3)
+```
+**dynlm_23**
+```{r}
+task_3_hum5_4 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + L(RBO_TS , k = 2 ) + L(RBO_TS , k = 3 ) + humidity_2_TS + S.T + S.T.1)
+summary(task_3_hum5_4)
+checkresiduals(task_3_hum5_4)
+```
+**dynlm_24**
+```{r}
+task_3_hum5_5 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + L(RBO_TS , k = 2 ) + L(RBO_TS , k = 3 ) + humidity_2_TS + L(humidity_2_TS, k = 1) + S.T + S.T.1)
+summary(task_3_hum5_5)
+checkresiduals(task_3_hum5_5)
+```
+**dynlm_25**
+```{r}
+task_3_hum5_6 = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + L(RBO_TS , k = 2 ) + L(RBO_TS , k = 3 ) + humidity_2_TS + L(humidity_2_TS, k = 1) + trend(RBO_TS) + S.T + S.T.1)
+summary(task_3_hum5_6)
+checkresiduals(task_3_hum5_6)
+```
+
+From all the model Summaries, it is observed that all dynamic models for `Relative Humidity` are statistically significant at 5% level. Adjusted r-squared is between (59-74)% in each model indicating models explains (59-74)% of variation in the RBO. 
+
+`dynlm_24`records the `lowest adjusted R2 (59.04%)`, while `dynlm_22` records the `highest R2(73.5%)`. 
+
+`S.TTrue` is significant in `dynlm_20, dynlm_21, dynlm_22, dynlm_25` models. `S.T.1TRUE, trend(RBO_TS)` is significant in `dynlm_22, dynlm_25` models. `L(RBO_TS, k = 1)` is significant in `dynlm_22`. All other coefficients of all models are insignificant.
+
+While in terms of Residual Diagnostic Checking, all models closely follows each other.
+
+Histogram in the residual checks is appeared to be symmentric in most of models, but residuals are not completely random. There is no correlation left in the residuals of all `Relative Humidity dynamic models`. Hence, diagnostic checks are good for these models.
+
+
+## **Model Comparison**
+```{r}
+T3_b_models <- c("dynlm_1", "dynlm_2", "dynlm_3", "dynlm_4", "dynlm_5",
+            "dynlm_6", "dynlm_7", "dynlm_8", "dynlm_9", "dynlm_10", 
+            "dynlm_11", "dynlm_12", "dynlm_13", "dynlm_14", "dynlm_15", 
+            "dynlm_16", "dynlm_17", "dynlm_18", "dynlm_19", "dynlm_20",
+            "dynlm_21", "dynlm_22", "dynlm_23", "dynlm_24", "dynlm_25")
+
+T3_b_x <- c(rep("FFD", 2), rep("Temperature", 5), rep("Rainfall", 5), rep("Radiation Level", 7), rep("Relative Humidity", 6)) 
+
+T3_b_aic <- AIC(task_3_model5_1, task_3_model5_2, 
+                task_3_temp5_1, task_3_temp5_2, task_3_temp5_3, task_3_temp5_4, task_3_temp5_5, 
+                task_3_rain5_1, task_3_rain5_2, task_3_rain5_3, task_3_rain5_4, task_3_rain5_5,
+                task_3_rad5_1, task_3_rad5_2, task_3_rad5_3, task_3_rad5_4, task_3_rad5_5, task_3_rad5_6, task_3_rad5_7,
+                task_3_hum5_1, task_3_hum5_2, task_3_hum5_3, task_3_hum5_4, task_3_hum5_5, task_3_hum5_6)$AIC
+
+T3_b_bic <- BIC(task_3_model5_1, task_3_model5_2, task_3_temp5_1,
+                task_3_temp5_2, task_3_temp5_3, task_3_temp5_4, task_3_temp5_5, 
+                task_3_rain5_1, task_3_rain5_2, task_3_rain5_3, task_3_rain5_4, task_3_rain5_5,
+                task_3_rad5_1, task_3_rad5_2, task_3_rad5_3, task_3_rad5_4, task_3_rad5_5, task_3_rad5_6, task_3_rad5_7,
+                task_3_hum5_1, task_3_hum5_2, task_3_hum5_3, task_3_hum5_4, task_3_hum5_5, task_3_hum5_6)$BIC
+
+T3_b_mase <- MASE(lm(task_3_model5_1), lm(task_3_model5_2), lm(task_3_temp5_1),
+                lm(task_3_temp5_2), lm(task_3_temp5_3), lm(task_3_temp5_4), lm(task_3_temp5_5), 
+                lm(task_3_rain5_1), lm(task_3_rain5_2), lm(task_3_rain5_3), lm(task_3_rain5_4), lm(task_3_rain5_5),
+                lm(task_3_rad5_1), lm(task_3_rad5_2), lm(task_3_rad5_3), lm(task_3_rad5_4), lm(task_3_rad5_5), lm(task_3_rad5_6), lm(task_3_rad5_7),
+                lm(task_3_hum5_1), lm(task_3_hum5_2), lm(task_3_hum5_3), lm(task_3_hum5_4), lm(task_3_hum5_5), lm(task_3_hum5_6))$MASE
+
+T3_b_Model_Comparison <- data.frame(T3_b_models, T3_b_x, T3_b_mase, T3_b_aic, T3_b_bic)
+colnames(T3_b_Model_Comparison) <- c("Model","Predictors","MASE","AIC", "BIC")
+kbl(T3_b_Model_Comparison) %>% kable_paper()
+```
+
+## **Forecasting**
+
+The Model Comparison Table of Task_3_b is arranged with the `ascending order of MASE()`.
+
+```{r}
+T3_b_sorted_MASE <- T3_b_Model_Comparison %>% arrange(MASE)
+kbl(T3_b_sorted_MASE) %>% kable_paper()
+```
+
+`dynlm_19` dynamic model has the lowest `MASE()`. Hence, it will be used to predict the next 3 years of RBO.
+
+**`dynlm_19`** model consist of `1st, 2nd, 3rd and 4th lag of RBO time series, trend component of RBO time series, radiatoin level time series and 1st  and 2nd order lag of radiation time series and 1st lag of temperature time series`
+
+**`dynlm_19`** = dynlm(RBO_TS ~ L(RBO_TS , k = 1 ) + L(RBO_TS , k = 2 ) + L(RBO_TS , k = 3 ) + L(RBO_TS , k = 4 ) + radiation_2_TS + L(radiation_2_TS, k = 1) + L(radiation_2_TS, k = 2) + trend(RBO_TS) + S.T + S.T.1)
+
+
+**Prediction Chart**
+```{r}
+q = 3
+n = nrow(task_3_rad5_7$model)
+rbo.frc = array(NA , (n + q))
+rbo.frc[1:n] = RBO_TS[5:length(RBO_TS)]
+trend = array(NA,q)
+trend.start = task_3_rad5_7$model[n,"trend(RBO_TS)"]
+trend = seq(trend.start , trend.start + q/12, 1/12)
+
+for(i in 1:q){
+data.new =c(1,rbo.frc[n-1+i],rbo.frc[n-2+i],rbo.frc[n-3+i],rbo.frc[n-4+i],1,1,1,trend[i],1,1)
+rbo.frc[n+i] = as.vector(task_3_rad5_7$coefficients) %*% data.new
+}
+
+plot(RBO_TS,xlim=c(1984,2018), 
+     ylab='RBO',xlab='Year', 
+     main = "Next 3 years forecasting of RBO using dynlm_19 model")
+
+lines(ts(rbo.frc[(n+1):(n+q)],start=c(2015)),col="#f01b1d")
+
+legend("topright", 
+       lty = 1, 
+       col = c("black", "#f01b1d"), 
+       c("Data", "Prediction"))
+```
+**Prediction Points**
+```{r}
+t3_points_dynlm <- rbo.frc[(n+1):(n+q)]
+
+t3_dynlm_prediction_points <- data.frame(t2_Time_point[1:3], t3_points_dynlm)
+colnames(t3_dynlm_prediction_points) = c("Time","Point Forecast")
+
+
+kable(t3_dynlm_prediction_points) %>% kable_paper()
+
+```
+Above prediction points and plots using Finite DLM gives the brief idea about RBO in the years(2015 - 2018) for a specific plant. 
+
+It reports RBO will be 0.718 in 2015, 0.726 in 2016, 0.724 in 2017, indicating moderate similarity of rank based first day of flowering order matrix in upcoming 4 years(2015-2017) compare to the year 1983.
+
+# **Conclusion**
+
+**Task-1**
+  
+  •	The Time Series Regression Models, Dynamic Models were fitted and Analysie to find the best suitable model to predict `disease specific weekly Mortality rate in Paris`.
+  
+  • Exponential Smoothing and State-Space models have compatible issue with relative high frequency(52), hence to fit these models `zoo` function was used to convert the weekly mortality rate time series into `Monthly Mortality Time Series`.
+    
+  • The performance criteria was `MASE()`.
+  
+  • On the basis of Residual Checking and MASE(), the `Dynamic Model (dynlm_6)` appeared as the best time series  Regression Model with `MASE = 0.6505409`, while `Auto Regressive Distributed Model(ardlDLM(4,2))`  with `MASE = 0.7023570` appeared as best distributed lag time series regression model. However, the auto-correlation and seasonal pattern was not captured and explained by any of the Time-Series Regression model. 
+  
+  • **dynlm_6** model consist of `1st and 2nd lag of mortality time series, season and trend component of mortality time series, temperature time series and 1st lag of temperature time series`.
+
+  • In terms of Exponential Smoothing model, the best model was `Holt_Winter additive method_damped MASE(0.6738379)`. However, this model has not as good diagnostic checking as compared to state-space.Even though, the diagnostic checking was not extremly high, it was significantly better compared to other models.
+  
+  • While, `ETS(M,Ad,M)` came out as best state-space model with lowest `MASE(0.6662357)`. These models reduced auto-correlation in the residuals. This model has the lowest `MASE()` value in terms of `Exponential Smoothing` and `State-Space model` 
+  
+  • `ETS(M,Ad,M)` will give monthly prediction of Disease specific mortality rate in Paris, as weekly data was converted to monthly data to tackle the compatibility isses.
+  
+  • The `dynlm_6` is best suitable model to predict the `Mortality Rate` for next four weeks, and prediction from this model suggests that Averaged weekly Mortality rate will be between `166 - 173` for the next `4 weeks`.
+  
+  • The next 2 years prediction of `ETS(M,Ad,M)` suggests that, mortality rate will be similar as it was for the past years, fluctiating between `650 - 900` for the period of `Oct, 2019 to Sep, 2021`.
+
+**Task-2**
+
+  •	The Univariate Time Series Regression Models, Univariate Dynamic Models, Exponential Smoothing, State-Space models were fitted and Analysie to find the best suitable model for each method to predict `First Day of Flowering` in specific plant for next `4 years (2015-2018)`
+  
+  • The performance criteria was `MASE()`.
+  
+  • On the basis of Residual Checking and MASE(), `Rainfall` came out as best univariate predictor for Finite DLM regression model, with `MASE = 0.6387259`. The prediction from this model suggests FFD will `witness sudden jump in year 2017 from 250.9270 to 302.8567`.
+
+  •`Rainfall` came out as best univariate predictor for `poly DLM regression model`, with `MASE = 0.7547376`. The prediction from this model suggests FFD will `gradually increase and have the value of 327.15 in 2018`. 
+  
+  •`Temperature` came out as best univariate predictor for `Koyck DLM regression model`, with `MASE = 0.8577623`. The prediction from this model suggests FFD will `fluctuates around 290th day`.
+  
+  •`Temperature` came out as best univariate predictor for `Auto Regressive DLM regression model ardlDLM(5,1) for Temperature`, with `MASE = 0.7769052`. The prediction from this model suggests FFD will `fluctuates around 290th day`.
+  
+  
+  • `Dynamic Model (dynlm_7)` appeared as the dynamic Regression Model with `MASE = 0.7403838`. Prediction from this model suggest fist day of flowering will be increase in next 4 years. 
+  
+  • **`dynlm_7`** model consist of `1st and 2nd lag of FFD time series, trend component of FFD time series, rainfall time series and 1st lag of rainfall time series`. However, the auto-correlation and seasonal pattern was not captured and explained by any of the Time-Series Regression model and dynamic model. 
+
+  • There is no seasonality exist in FFD time series, hence seasonality component of `Exponential Smoothing` and `State-space` will ne none.
+
+  • In terms of Exponential Smoothing model, the best model was `Holt’s method` with `MASE(0.7832419)`. This model has better diagnostic checking as compared to all previous models.
+  
+  • While, `ETS(A,A,N)` came out as best state-space model with lowest `MASE(0.7832208)`. These models reduced auto-correlation in the residuals. This model has the lowest `MASE()` value in terms of `Exponential Smoothing` and `State-Space model`. However, residual diagnostics and prediction of both `Holt's method` and `ETS(A,A,N)` are closely follow each others.  
+  
+  • Even though Models without intercept has adjusted R2 of nearly 99%, all the coefficients of those models were insignificant. 
+  
+  • To conclude, **`Rainfall`** and **`Temperature`** are climate factors which impacts the first day of flowering for the given species as `Rainfall` came out as best univariate climate factors for the `Finite Distributed Lag modesl, Poly Distributed Lag Model and Dynamic model`, while `Temperature` came out as best univariate climate factors for the `Koyck Distributed Lag model, Auto-regressive Distributed Lag model`. Prediction of FFD in all model is either increasing or stable at the same level, indicating there is no chance that Day of first flower occurance will be decrease in upcoming 4 years. 
+
+
+**Task-3**
+
+  •	The Time Series Regression Models, Dynamic Models, Exponential Models, State-Space models were fitted and Analysie to find the best suitable model to predict `Rank-based Order similarity metric (RBO)`.
+    
+  • The performance criteria was `MASE()`.
+  
+  • On the basis of Residual Checking and MASE(), the `Finite Distributed Lag Model with Radiatoin level` appeared as the best time series Regression Model with `MASE = 0.7073330`, 
+  
+  • while On the basis of Residual Checking and AIC()`Auto Regressive Distributed Model(ardlDLM(1,3)) for Radiatoin level`  with `AIC = 110.63384` appeared as best time series regression model. However, the auto-correlation and seasonal pattern was not captured and explained by any of the Time-Series Regression model. 
+
+  • **`dynlm_19`** model consist of `1st, 2nd, 3rd and 4th lag of RBO time series, trend component of RBO time series, radiatoin level time series and 1st  and 2nd order lag of radiation time series and 1st lag of temperature time series`
+
+  • To conclude, **`Radiation Level`** is best climate factors which impacts the disimilarity of `Rank-based similarity-order Matrix for subsequent years`. Prediction of RBO in all models are increasing at moderate pace or at around mean level of 0.71. 
+
+# **Reference**
+
+Class Lectres - Labs
